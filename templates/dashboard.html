@@ -86,6 +86,14 @@
                             <i class="fas fa-cube"></i> 3D 模擬即時監控中
                         </div>
                     </div>
+                    <!-- Dynamic Creature Selector Dropdown -->
+                    <div style="position: absolute; top: 20px; right: 20px; z-index: 10;">
+                        <select id="creature-select" style="background: rgba(10, 15, 30, 0.7); backdrop-filter: blur(8px); border: 1px solid var(--border-color); color: #fff; padding: 6px 12px; border-radius: 8px; cursor: pointer; font-size: 13px; outline: none; transition: border-color 0.2s;" onfocus="this.style.borderColor='var(--color-primary)'" onblur="this.style.borderColor='var(--border-color)'">
+                            <option value="fish" selected>🐟 模擬生物：魚類</option>
+                            <option value="shrimp">🦐 模擬生物：蝦類</option>
+                            <option value="crab">🦀 模擬生物：螃蟹</option>
+                        </select>
+                    </div>
                     <div class="visualizer-actions">
                         <button class="ar-btn" id="iot-mode-btn" style="background: rgba(0, 242, 254, 0.15); border-color: rgba(0, 242, 254, 0.3);">
                             <i class="fas fa-wifi"></i> 實體感測器串接

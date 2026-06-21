@@ -5,6 +5,7 @@ let currentDays = 7;
 let chartInstance = null;
 let chatHistory = [];
 let wheelSpinningSpeedFactor = 0.0;
+let currentCreatureType = 'fish';
 
 // Three.js 3D Scene variables
 let scene, camera, renderer;
@@ -78,6 +79,15 @@ function setupEventListeners() {
             document.getElementById('pond-title-3d').textContent = card.querySelector('.pond-title').textContent;
         });
     });
+
+    // Creature Selector dropdown handler
+    const creatureSelect = document.getElementById('creature-select');
+    if (creatureSelect) {
+        creatureSelect.addEventListener('change', (e) => {
+            currentCreatureType = e.target.value;
+            spawnCreatures(currentCreatureType);
+        });
+    }
 
     // 2. Auto Aeration Configuration Button
     const saveAutoBtn = document.getElementById('save-auto-aeration-btn');
@@ -510,31 +520,12 @@ function initThreeJS() {
 
     scene.add(wheelGroup);
 
-    // Build Floating fish
+    // Build Floating creatures
     fishGroup = new THREE.Group();
     scene.add(fishGroup);
 
-    const fishCount = 6;
-    const fishGeo = new THREE.ConeGeometry(0.1, 0.4, 8);
-    fishGeo.rotateX(Math.PI / 2);
-    const fishMat = new THREE.MeshStandardMaterial({ color: 0xffaa44, emissive: 0xff5500, emissiveIntensity: 0.3 });
-
-    for (let i = 0; i < fishCount; i++) {
-        const fish = new THREE.Mesh(fishGeo, fishMat);
-        // Random placement radius 2 to 4
-        const radius = 2.0 + Math.random() * 2.0;
-        const angle = Math.random() * Math.PI * 2;
-        fish.position.set(Math.cos(angle) * radius, -0.1, Math.sin(angle) * radius);
-        
-        // Custom variables
-        fish.userData = {
-            radius: radius,
-            angle: angle,
-            speed: 0.01 + Math.random() * 0.015,
-            wiggleSpeed: 5 + Math.random() * 5
-        };
-        fishGroup.add(fish);
-    }
+    // Spawn selected creature type
+    spawnCreatures(currentCreatureType);
 
     // Build Particle Bubble System
     const bubbleGeo = new THREE.BufferGeometry();
@@ -580,6 +571,260 @@ function initThreeJS() {
     animate();
 }
 
+// --- Realistic Creatures Mesh Building Functions ---
+
+function createRealisticFish() {
+    const fish = new THREE.Group();
+    
+    // Body (streamlined ellipsoid)
+    const bodyGeo = new THREE.SphereGeometry(0.12, 16, 16);
+    bodyGeo.scale(1, 0.7, 2.5); // Flattened and elongated
+    const bodyMat = new THREE.MeshStandardMaterial({ 
+        color: 0xff7a00, 
+        roughness: 0.1, 
+        metalness: 0.5,
+        emissive: 0xff3c00,
+        emissiveIntensity: 0.2
+    });
+    const body = new THREE.Mesh(bodyGeo, bodyMat);
+    body.castShadow = true;
+    fish.add(body);
+    
+    // Tail fin pivot and mesh
+    const tailPivot = new THREE.Group();
+    tailPivot.position.set(0, 0, -0.3); // Set hinge at the back of body
+    
+    // Tail fin shape (vertical diamond or triangle)
+    const tailGeo = new THREE.ConeGeometry(0.02, 0.22, 4);
+    tailGeo.rotateX(Math.PI / 2); // align flat
+    tailGeo.scale(1, 1.8, 1);     // stretch vertically
+    const tailMat = new THREE.MeshStandardMaterial({ color: 0xff3c00, roughness: 0.2 });
+    const tailMesh = new THREE.Mesh(tailGeo, tailMat);
+    tailMesh.position.set(0, 0, -0.12); // offset backward from hinge
+    tailPivot.add(tailMesh);
+    
+    fish.add(tailPivot);
+    fish.userData.tailPivot = tailPivot; // save reference for tail wagging!
+    
+    // Pectoral fins (left & right)
+    const finGeo = new THREE.BoxGeometry(0.12, 0.01, 0.18);
+    const leftFin = new THREE.Mesh(finGeo, tailMat);
+    leftFin.position.set(0.14, -0.04, 0.05);
+    leftFin.rotation.set(0.2, 0, 0.4);
+    fish.add(leftFin);
+    
+    const rightFin = new THREE.Mesh(finGeo, tailMat);
+    rightFin.position.set(-0.14, -0.04, 0.05);
+    rightFin.rotation.set(0.2, 0, -0.4);
+    fish.add(rightFin);
+
+    // Dorsal fin (top)
+    const dorsalGeo = new THREE.BoxGeometry(0.01, 0.12, 0.25);
+    const dorsalFin = new THREE.Mesh(dorsalGeo, tailMat);
+    dorsalFin.position.set(0, 0.12, -0.05);
+    dorsalFin.rotation.set(-0.3, 0, 0);
+    fish.add(dorsalFin);
+    
+    return fish;
+}
+
+function createRealisticShrimp() {
+    const shrimp = new THREE.Group();
+    
+    // Shrimp body segments (curved chain of cylinders/spheres)
+    const bodyMat = new THREE.MeshStandardMaterial({ 
+        color: 0xff9999, 
+        transparent: true, 
+        opacity: 0.85, 
+        roughness: 0.2,
+        emissive: 0xff3333,
+        emissiveIntensity: 0.15
+    });
+    
+    // Segment 1 (head/carapace)
+    const headGeo = new THREE.CylinderGeometry(0.05, 0.06, 0.25, 8);
+    headGeo.rotateX(Math.PI / 2);
+    const head = new THREE.Mesh(headGeo, bodyMat);
+    head.position.set(0, 0.05, 0.12);
+    shrimp.add(head);
+    
+    // Segments 2-5 (abdomen)
+    const abdGeo = new THREE.SphereGeometry(0.05, 8, 8);
+    const segments = [];
+    for (let i = 0; i < 4; i++) {
+        const seg = new THREE.Mesh(abdGeo, bodyMat);
+        // Curve downwards and backwards
+        const z = -i * 0.08;
+        const y = 0.05 - (i * 0.03);
+        seg.position.set(0, y, z);
+        seg.scale.set(0.8, 1, 1.2);
+        shrimp.add(seg);
+        segments.push(seg);
+    }
+    
+    // Tail fan (uropod)
+    const tailGeo = new THREE.BoxGeometry(0.08, 0.005, 0.12);
+    const tail = new THREE.Mesh(tailGeo, bodyMat);
+    tail.position.set(0, -0.08, -0.32);
+    tail.rotation.x = -0.3;
+    shrimp.add(tail);
+    
+    // Long antennae (forward extending thin lines/tubes)
+    const antGeo = new THREE.BoxGeometry(0.003, 0.003, 0.45);
+    const leftAnt = new THREE.Mesh(antGeo, bodyMat);
+    leftAnt.position.set(0.02, 0.06, 0.3);
+    leftAnt.rotation.set(0.1, 0.2, 0);
+    shrimp.add(leftAnt);
+    
+    const rightAnt = new THREE.Mesh(antGeo, bodyMat);
+    rightAnt.position.set(-0.02, 0.06, 0.3);
+    rightAnt.rotation.set(0.1, -0.2, 0);
+    shrimp.add(rightAnt);
+    
+    // Small swimming legs (pleopods)
+    const legGeo = new THREE.BoxGeometry(0.005, 0.06, 0.005);
+    const legs = [];
+    for (let i = 0; i < 4; i++) {
+        const leftLeg = new THREE.Mesh(legGeo, bodyMat);
+        leftLeg.position.set(0.03, -0.02 - (i * 0.02), -0.05 - (i * 0.05));
+        leftLeg.rotation.z = -0.3;
+        shrimp.add(leftLeg);
+        legs.push(leftLeg);
+        
+        const rightLeg = new THREE.Mesh(legGeo, bodyMat);
+        rightLeg.position.set(-0.03, -0.02 - (i * 0.02), -0.05 - (i * 0.05));
+        rightLeg.rotation.z = 0.3;
+        shrimp.add(rightLeg);
+        legs.push(rightLeg);
+    }
+    shrimp.userData.legs = legs; // reference to animate pleopods wiggling
+    
+    return shrimp;
+}
+
+function createRealisticCrab() {
+    const crab = new THREE.Group();
+    
+    const bodyMat = new THREE.MeshStandardMaterial({ 
+        color: 0xcc3333, 
+        roughness: 0.4, 
+        metalness: 0.2,
+        emissive: 0x990000,
+        emissiveIntensity: 0.2
+    });
+    
+    // Main Carapace (wide, flat shell)
+    const shellGeo = new THREE.SphereGeometry(0.15, 12, 12);
+    shellGeo.scale(1.4, 0.6, 1.1);
+    const shell = new THREE.Mesh(shellGeo, bodyMat);
+    shell.castShadow = true;
+    crab.add(shell);
+    
+    // Front Claws (chelae) - left & right
+    const armGeo = new THREE.CylinderGeometry(0.02, 0.03, 0.12, 8);
+    const clawGeo = new THREE.SphereGeometry(0.05, 8, 8);
+    clawGeo.scale(1, 0.7, 1.4); // pinch shape
+    
+    // Left Claw
+    const leftArm = new THREE.Group();
+    leftArm.position.set(0.14, 0, 0.08);
+    leftArm.rotation.set(0, 0.6, 0.4);
+    const lSegment = new THREE.Mesh(armGeo, bodyMat);
+    lSegment.rotation.z = Math.PI / 2;
+    leftArm.add(lSegment);
+    const lClaw = new THREE.Mesh(clawGeo, bodyMat);
+    lClaw.position.set(0.08, 0, 0.06);
+    lClaw.rotation.y = 0.4;
+    leftArm.add(lClaw);
+    crab.add(leftArm);
+    
+    // Right Claw
+    const rightArm = new THREE.Group();
+    rightArm.position.set(-0.14, 0, 0.08);
+    rightArm.rotation.set(0, -0.6, -0.4);
+    const rSegment = new THREE.Mesh(armGeo, bodyMat);
+    rSegment.rotation.z = -Math.PI / 2;
+    rightArm.add(rSegment);
+    const rClaw = new THREE.Mesh(clawGeo, bodyMat);
+    rClaw.position.set(-0.08, 0, 0.06);
+    rClaw.rotation.y = -0.4;
+    rightArm.add(rClaw);
+    crab.add(rightArm);
+    
+    // 6 walking legs (3 on each side)
+    const legGeo = new THREE.CylinderGeometry(0.008, 0.008, 0.15, 6);
+    const legs = [];
+    
+    for (let i = 0; i < 3; i++) {
+        const zOffset = -0.06 + i * 0.06;
+        
+        // Left leg
+        const leftLeg = new THREE.Group();
+        leftLeg.position.set(0.12, -0.02, zOffset);
+        const lUpper = new THREE.Mesh(legGeo, bodyMat);
+        lUpper.position.set(0.05, -0.04, 0);
+        lUpper.rotation.set(0, 0, 0.8);
+        leftLeg.add(lUpper);
+        crab.add(leftLeg);
+        legs.push(leftLeg);
+        
+        // Right leg
+        const rightLeg = new THREE.Group();
+        rightLeg.position.set(-0.12, -0.02, zOffset);
+        const rUpper = new THREE.Mesh(legGeo, bodyMat);
+        rUpper.position.set(-0.05, -0.04, 0);
+        rUpper.rotation.set(0, 0, -0.8);
+        rightLeg.add(rUpper);
+        crab.add(rightLeg);
+        legs.push(rightLeg);
+    }
+    crab.userData.legs = legs; // reference to animate walking legs
+    
+    return crab;
+}
+
+function spawnCreatures(type) {
+    if (!fishGroup || !scene) return;
+    
+    // Clear existing objects
+    while(fishGroup.children.length > 0) {
+        fishGroup.remove(fishGroup.children[0]);
+    }
+    
+    const count = type === 'crab' ? 5 : 6; // slightly fewer crabs since they are complex
+    
+    for (let i = 0; i < count; i++) {
+        let creature;
+        const radius = 1.8 + Math.random() * 2.2;
+        const angle = Math.random() * Math.PI * 2;
+        
+        let yLevel = -0.3 - Math.random() * 0.4; // default fish depth
+        
+        if (type === 'fish') {
+            creature = createRealisticFish();
+        } else if (type === 'shrimp') {
+            creature = createRealisticShrimp();
+            yLevel = -0.5 - Math.random() * 0.4;
+        } else if (type === 'crab') {
+            creature = createRealisticCrab();
+            yLevel = -1.15; // Bottom floor of pond
+        }
+        
+        creature.position.set(Math.cos(angle) * radius, yLevel, Math.sin(angle) * radius);
+        
+        creature.userData = {
+            type: type,
+            radius: radius,
+            angle: angle,
+            baseY: yLevel,
+            speed: (type === 'crab' ? 0.004 : 0.008) + Math.random() * 0.008, // crabs walk slower
+            wiggleSpeed: 8 + Math.random() * 6
+        };
+        
+        fishGroup.add(creature);
+    }
+}
+
 // 3D Scene Animation Loop
 function animate() {
     requestAnimationFrame(animate);
@@ -594,22 +839,60 @@ function animate() {
         waterWheelMesh.rotation.z -= 0.06 * wheelSpinningSpeedFactor; // Scale speed by active wheels ratio
     }
 
-    // 3. Fish Swimming
+    // 3. Creatures Swimming/Walking
     if (fishGroup) {
-        fishGroup.children.forEach(fish => {
-            fish.userData.angle += fish.userData.speed;
-            const r = fish.userData.radius;
-            const a = fish.userData.angle;
+        fishGroup.children.forEach(creature => {
+            const type = creature.userData.type;
+            creature.userData.angle += creature.userData.speed;
+            const r = creature.userData.radius;
+            const a = creature.userData.angle;
             
-            // Swim in circular path
-            fish.position.x = Math.cos(a) * r;
-            fish.position.z = Math.sin(a) * r;
+            // Move in circular path
+            creature.position.x = Math.cos(a) * r;
+            creature.position.z = Math.sin(a) * r;
             
-            // Set orientation tangent to path
-            fish.rotation.y = -a + Math.PI / 2;
-            
-            // Wiggle up/down
-            fish.position.y = -0.15 + 0.05 * Math.sin(Date.now() * 0.003 * fish.userData.wiggleSpeed);
+            if (type === 'fish') {
+                // Set orientation tangent to path (swimming forward)
+                creature.rotation.y = -a + Math.PI / 2;
+                
+                // Tail wagging animation
+                if (creature.userData.tailPivot) {
+                    creature.userData.tailPivot.rotation.y = Math.sin(Date.now() * 0.0015 * creature.userData.wiggleSpeed) * 0.45;
+                }
+                
+                // Bobbing up/down wave
+                creature.position.y = creature.userData.baseY + 0.04 * Math.sin(Date.now() * 0.001 * creature.userData.wiggleSpeed);
+                
+            } else if (type === 'shrimp') {
+                // Shrimps swim forward, face tangent
+                creature.rotation.y = -a + Math.PI / 2;
+                
+                // Swim pleopods (legs) wiggling
+                if (creature.userData.legs) {
+                    creature.userData.legs.forEach((leg, idx) => {
+                        leg.rotation.x = Math.sin(Date.now() * 0.015 + idx) * 0.35;
+                    });
+                }
+                
+                // Bobbing and slight pulse
+                const pulse = Math.sin(Date.now() * 0.005) * 0.04;
+                creature.position.y = creature.userData.baseY + 0.05 * Math.sin(Date.now() * 0.002 * creature.userData.wiggleSpeed);
+                creature.position.x += Math.sin(-a) * pulse;
+                creature.position.z += Math.cos(-a) * pulse;
+                
+            } else if (type === 'crab') {
+                // Crabs walk sideways! Their lateral side faces the travel direction.
+                creature.rotation.y = -a; 
+                
+                // Walking legs wiggling
+                if (creature.userData.legs) {
+                    creature.userData.legs.forEach((leg, idx) => {
+                        leg.rotation.z = Math.sin(Date.now() * 0.012 + idx) * 0.35;
+                    });
+                }
+                // Crabs crawl on bottom
+                creature.position.y = creature.userData.baseY;
+            }
         });
     }
 
