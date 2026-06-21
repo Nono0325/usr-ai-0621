@@ -76,8 +76,8 @@
             <div class="visualizer-telemetry-wrapper">
                 
                 <!-- 3D Render Panel -->
-                <div class="glass-panel visualizer-container" id="three-container" style="display: flex; flex-direction: column; overflow: hidden; height: auto;">
-                    <div style="position: relative; width: 100%; height: 480px; flex-shrink: 0;" id="canvas-wrapper">
+                <div class="glass-panel visualizer-container" id="three-container" style="display: flex; flex-direction: column; overflow: hidden;">
+                    <div id="canvas-wrapper">
                         <canvas id="three-canvas" style="width: 100%; height: 100%; display: block;"></canvas>
                         
                         <!-- Scan HUD Overlay -->
@@ -129,15 +129,16 @@
                                 <i class="fas fa-robot"></i> AI 智慧掃描
                             </button>
                         </div>
-                    </div>
 
-                    <div class="visualizer-actions" style="position: absolute; bottom: 20px; right: 20px; z-index: 10;">
-                        <button class="ar-btn" id="iot-mode-btn" style="background: rgba(0, 242, 254, 0.15); border-color: rgba(0, 242, 254, 0.3);">
-                            <i class="fas fa-wifi"></i> 實體感測器串接
-                        </button>
-                        <button class="ar-btn" id="ar-mode-btn">
-                            <i class="fas fa-vr-cardboard"></i> AR 實境投影
-                        </button>
+                        <!-- Visualizer Action Buttons -->
+                        <div class="visualizer-actions">
+                            <button class="ar-btn" id="iot-mode-btn" style="background: rgba(0, 242, 254, 0.15); border-color: rgba(0, 242, 254, 0.3);">
+                                <i class="fas fa-wifi"></i> 實體感測器串接
+                            </button>
+                            <button class="ar-btn" id="ar-mode-btn">
+                                <i class="fas fa-vr-cardboard"></i> AR 實境投影
+                            </button>
+                        </div>
                     </div>
                 </div>
 
