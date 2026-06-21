@@ -1,0 +1,540 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}智慧水產養殖數據中心 | AquaShield{% endblock %}
+
+{% block extra_head %}
+<!-- Load Three.js and Chart.js CDNs -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+{% endblock %}
+
+{% block content %}
+<div class="dashboard-container">
+    <!-- Header -->
+    <header class="glass-panel">
+        <div class="brand-section">
+            <div class="brand-logo"><i class="fas fa-shield-halved"></i> AquaShield <span>AI</span></div>
+            <div class="system-status">
+                <div class="status-dot"></div>
+                <span>IoT 系統運作中</span>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Grid Layout -->
+    <div class="dashboard-grid">
+        
+        <!-- Left Sidebar: Ponds List -->
+        <div class="sidebar">
+            <div class="section-header">
+                <h2><i class="fas fa-water"></i> 魚池管理</h2>
+            </div>
+            
+            <div class="pond-list">
+                {% for item in ponds_data %}
+                <div class="pond-card glass-panel {% if forloop.first %}active{% endif %}" 
+                     data-id="{{ item.pond.id }}" 
+                     data-wheel="{% if item.pond.water_wheel_status %}true{% else %}false{% endif %}"
+                     data-auto-enabled="{% if item.pond.auto_aeration_enabled %}true{% else %}false{% endif %}"
+                     data-auto-threshold="{{ item.pond.auto_aeration_threshold }}">
+                    <div class="pond-card-header">
+                        <div class="pond-title">{{ item.pond.name }}</div>
+                    </div>
+                    <div class="pond-meta"><i class="fas fa-map-marker-alt"></i> {{ item.pond.location }}</div>
+                    <div class="pond-status-indicators">
+                        <div class="indicator-pill wheel-pill {% if item.pond.water_wheel_status %}active{% endif %}">
+                            {% if item.pond.water_wheel_status %}
+                            <i class="fas fa-sync-alt fa-spin"></i> 水車: 運轉中
+                            {% else %}
+                            <i class="fas fa-power-off"></i> 水車: 停止
+                            {% endif %}
+                        </div>
+                    </div>
+                    <div class="water-wheel-badge {% if item.pond.water_wheel_status %}spinning{% endif %}">
+                        <i class="fas fa-fan"></i>
+                    </div>
+                </div>
+                {% empty %}
+                <div class="glass-panel" style="padding: 20px; text-align: center; color: var(--text-secondary);">
+                    目前無魚池資料，請點選下方按鈕新增。
+                </div>
+                {% endfor %}
+            </div>
+
+            <!-- Add Pond Card button -->
+            <div class="glass-panel pond-card add-action-card" id="add-pond-btn" style="min-height: 80px;">
+                <div class="action-icon"><i class="fas fa-plus-circle"></i></div>
+                <span>新增魚池</span>
+            </div>
+        </div>
+
+        <!-- Main Dashboard Views -->
+        <div class="main-content">
+            
+            <!-- 3D Viewer & Instant Telemetry -->
+            <div style="display: grid; grid-template-columns: 1.2fr 1fr; gap: 24px; align-items: stretch; margin-bottom: 24px;">
+                
+                <!-- 3D Render Panel -->
+                <div class="glass-panel visualizer-container" id="three-container">
+                    <canvas id="three-canvas"></canvas>
+                    <div class="visualizer-overlay">
+                        <div class="visualizer-title" id="pond-title-3d">
+                            {% if ponds.0 %}{{ ponds.0.name }}{% else %}未選取魚池{% endif %}
+                        </div>
+                        <div style="font-size: 13px; color: var(--text-secondary); margin-top: 4px;">
+                            <i class="fas fa-cube"></i> 3D 模擬即時監控中
+                        </div>
+                    </div>
+                    <div class="visualizer-actions">
+                        <button class="ar-btn" id="iot-mode-btn" style="background: rgba(0, 242, 254, 0.15); border-color: rgba(0, 242, 254, 0.3);">
+                            <i class="fas fa-wifi"></i> 實體感測器串接
+                        </button>
+                        <button class="ar-btn" id="ar-mode-btn">
+                            <i class="fas fa-vr-cardboard"></i> AR 實境投影
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Instant Sensors & Telemetry Control -->
+                <div style="display: flex; flex-direction: column; gap: 24px;">
+                    <!-- Telemetry Cards Grid -->
+                    <div class="telemetry-grid">
+                        <div class="glass-panel telemetry-card temp-card">
+                            <div class="telemetry-icon-box"><i class="fas fa-temperature-high"></i></div>
+                            <div class="telemetry-info">
+                                <span class="telemetry-label">水池溫度</span>
+                                <span class="telemetry-value"><span id="val-temp">--</span><span class="telemetry-unit">°C</span></span>
+                            </div>
+                        </div>
+
+                        <div class="glass-panel telemetry-card ph-card">
+                            <div class="telemetry-icon-box"><i class="fas fa-droplet"></i></div>
+                            <div class="telemetry-info">
+                                <span class="telemetry-label">酸鹼 pH 值</span>
+                                <span class="telemetry-value"><span id="val-ph">--</span><span class="telemetry-unit"></span></span>
+                            </div>
+                        </div>
+
+                        <div class="glass-panel telemetry-card do-card">
+                            <div class="telemetry-icon-box"><i class="fas fa-wind"></i></div>
+                            <div class="telemetry-info">
+                                <span class="telemetry-label">水中溶氧量</span>
+                                <span class="telemetry-value"><span id="val-do">--</span><span class="telemetry-unit"> mg/L</span></span>
+                            </div>
+                        </div>
+
+                        <div class="glass-panel telemetry-card wl-card">
+                            <div class="telemetry-icon-box"><i class="fas fa-water"></i></div>
+                            <div class="telemetry-info">
+                                <span class="telemetry-label">目前水位</span>
+                                <span class="telemetry-value"><span id="val-wl">--</span><span class="telemetry-unit"> m</span></span>
+                            </div>
+                        </div>
+
+                        <!-- Add Sensor Card button -->
+                        <div class="glass-panel telemetry-card add-action-card" id="add-sensor-btn" style="min-height: 94px;">
+                            <div class="action-icon"><i class="fas fa-plus-circle"></i></div>
+                            <span>新增感測器</span>
+                        </div>
+                    </div>
+
+                    <!-- Water Wheel Control Switch and Auto Aeration Panel -->
+                    <div class="glass-panel" style="padding: 20px; display: flex; flex-direction: column; gap: 16px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border-color); padding-bottom: 10px;">
+                            <h3 style="font-size: 16px; display: flex; align-items: center; gap: 8px;"><i class="fas fa-fan" style="color:var(--color-accent)"></i> 增氧水車控制中心</h3>
+                            <button class="btn-secondary" id="add-wheel-btn" style="padding: 4px 10px; font-size: 12px; border-radius: 6px;"><i class="fas fa-plus"></i> 新增水車</button>
+                        </div>
+                        
+                        <!-- List of water wheels (rendered dynamically in JS or template) -->
+                        <div id="wheels-list-container" style="display: flex; flex-direction: column; gap: 12px;">
+                            <!-- Populated dynamically by JS for responsiveness -->
+                        </div>
+
+                        <!-- Auto Aeration Loop Config -->
+                        <div style="border-top: 1px solid var(--border-color); padding-top: 14px; display: flex; flex-direction: column; gap: 10px;">
+                            <div style="display: flex; justify-content: space-between; align-items: center;">
+                                <div>
+                                    <h4 style="font-size: 14px; color: #fff;">🤖 智慧溶氧自動增氧控制</h4>
+                                    <span style="font-size: 12px; color: var(--text-secondary);">當水中溶氧量低於臨界值時自動開啟水車</span>
+                                </div>
+                                <label class="switch">
+                                    <input type="checkbox" id="auto-aeration-switch">
+                                    <span class="slider"></span>
+                                </label>
+                            </div>
+                            <div id="auto-aeration-threshold-container" style="display: flex; justify-content: space-between; align-items: center; margin-top: 6px;">
+                                <span style="font-size: 13px; color: var(--text-secondary);">啟動臨界溶氧量：</span>
+                                <div style="display: flex; align-items: center; gap: 8px;">
+                                    <input type="number" id="auto-aeration-threshold-input" step="0.1" min="1.0" max="10.0" style="width: 70px; background: rgba(0,0,0,0.3); border: 1px solid var(--border-color); color: #fff; padding: 4px 8px; border-radius: 6px; text-align: center;" value="4.0">
+                                    <span style="font-size: 13px; color: var(--text-secondary);">mg/L</span>
+                                    <button class="btn-primary" id="save-auto-aeration-btn" style="padding: 4px 8px; font-size: 12px; border-radius: 6px;">套用</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+
+            <!-- Historical Analytics View -->
+            <div class="glass-panel historical-container">
+                <div class="section-header" style="margin-bottom: 20px;">
+                    <h2><i class="fas fa-chart-line"></i> 歷史監測數據與 AI 水質健檢</h2>
+                </div>
+
+                <!-- Filter Panel -->
+                <div class="filter-bar">
+                    <div class="filter-group">
+                        <label>感測器項目</label>
+                        <select class="filter-control" id="chart-sensor-select">
+                            <option value="temperature" selected>水池溫度 (°C)</option>
+                            <option value="ph">酸鹼 pH 值</option>
+                            <option value="dissolved_oxygen">水中溶氧量 (mg/L)</option>
+                            <option value="water_level">目前水位 (m)</option>
+                        </select>
+                    </div>
+
+                    <div class="filter-group">
+                        <label>時間範圍</label>
+                        <select class="filter-control" id="chart-range-select">
+                            <option value="1">過去 24 小時</option>
+                            <option value="7" selected>過去 7 天</option>
+                            <option value="30">過去 30 天</option>
+                        </select>
+                    </div>
+
+                    <div class="filter-group">
+                        <label>顯示樣式</label>
+                        <select class="filter-control" id="chart-view-select">
+                            <option value="chart" selected>折線趨勢圖</option>
+                            <option value="table">詳細數據列表</option>
+                        </select>
+                    </div>
+                </div>
+
+                <!-- Statistics Summary -->
+                <div class="stats-grid">
+                    <div class="stat-item">
+                        <span class="telemetry-label">區間平均值</span>
+                        <div class="stat-val" id="stat-avg" style="color: var(--color-primary);">--</div>
+                    </div>
+                    <div class="stat-item">
+                        <span class="telemetry-label">最大觀測值</span>
+                        <div class="stat-val" id="stat-max" style="color: var(--color-success);">--</div>
+                    </div>
+                    <div class="stat-item">
+                        <span class="telemetry-label">最低觀測值</span>
+                        <div class="stat-val" id="stat-min" style="color: var(--color-danger);">--</div>
+                    </div>
+                </div>
+
+                <!-- Visualization Displays -->
+                <div style="height: 320px; position: relative;">
+                    <canvas id="historical-chart"></canvas>
+                    
+                    <div id="historical-table-box" class="historical-table-container" style="display: none;">
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>紀錄時間</th>
+                                    <th>測量數值</th>
+                                    <th>狀態評級</th>
+                                </tr>
+                            </thead>
+                            <tbody id="historical-table-body">
+                                <!-- Populated dynamically by JS -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- AI Health Report Overlay -->
+                <div class="ai-health-box">
+                    <div class="ai-icon-pulse"><i class="fas fa-brain"></i></div>
+                    <div>
+                        <div class="ai-health-title">AI 水質健康動態分析評級：<span id="ai-status">載入中...</span></div>
+                        <p style="font-size: 13.5px; color: var(--text-secondary); line-height: 1.6;" id="ai-advice">
+                            正在分析歷史趨勢與水車運作對應關係...
+                        </p>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+
+    </div>
+</div>
+
+<!-- AI Floating Chatbot Widget -->
+<div class="chat-fab" id="chat-fab">
+    <i class="fas fa-robot"></i>
+</div>
+
+<div class="chat-drawer glass-panel" id="chat-drawer">
+    <div class="chat-header">
+        <div class="chat-header-info">
+            <div class="chat-header-icon"><i class="fas fa-microchip"></i></div>
+            <div>
+                <h3>智慧養殖 AI 助理</h3>
+                <span>在線監控・控制中心</span>
+            </div>
+        </div>
+        <button class="chat-close-btn" id="chat-close"><i class="fas fa-times"></i></button>
+    </div>
+    
+    <div class="chat-body" id="chat-body">
+        <div class="chat-msg assistant">
+            您好！我是 AquaShield 智慧養殖助理。我可以為您查詢各個魚池的狀況、感測器讀數，也可以直接幫您建立新魚池或控制水車開關。請問今天需要協助您處理什麼呢？
+        </div>
+    </div>
+    
+    <div class="chat-footer">
+        <input type="text" class="chat-input" id="chat-input" placeholder="詢問魚池狀況、開啟水車或新增感測器...">
+        <button class="chat-send-btn" id="chat-send"><i class="fas fa-paper-plane"></i></button>
+    </div>
+</div>
+
+<!-- Modal Dialogs -->
+<!-- Add Pond Modal -->
+<div class="modal-backdrop" id="add-pond-modal">
+    <div class="glass-panel modal-box">
+        <div class="modal-header">
+            <h3 style="font-size: 20px;"><i class="fas fa-plus-circle"></i> 新增魚池</h3>
+            <button class="modal-close" id="close-pond-modal"><i class="fas fa-times"></i></button>
+        </div>
+        <div class="modal-body">
+            <div class="form-group">
+                <label for="pond-name-input">魚池名稱</label>
+                <input type="text" id="pond-name-input" placeholder="例如: 魚池 Delta (草蝦池)">
+            </div>
+            <div class="form-group">
+                <label for="pond-location-input">設置位置</label>
+                <input type="text" id="pond-location-input" placeholder="例如: 西大區 04 號地">
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn-secondary" id="cancel-pond-modal">取消</button>
+            <button class="btn-primary" id="save-pond-btn">確認建立</button>
+        </div>
+    </div>
+</div>
+
+<!-- Add Sensor Modal -->
+<div class="modal-backdrop" id="add-sensor-modal">
+    <div class="glass-panel modal-box">
+        <div class="modal-header">
+            <h3 style="font-size: 20px; display: flex; align-items: center; gap: 8px;"><i class="fas fa-plus-circle" style="color:var(--color-primary);"></i> 新增感測器</h3>
+            <button class="modal-close" id="close-sensor-modal"><i class="fas fa-times"></i></button>
+        </div>
+        <div class="modal-body">
+            <div class="form-group">
+                <label for="sensor-name-input">感測器名稱/編號</label>
+                <input type="text" id="sensor-name-input" placeholder="例如: TEMP-02">
+            </div>
+            <div class="form-group">
+                <label for="sensor-type-select">量測項目</label>
+                <select id="sensor-type-select" style="background:rgba(0,0,0,0.3); color:#fff; border:1px solid var(--border-color); padding:10px; border-radius:8px;">
+                    <option value="temperature">水池溫度 (°C)</option>
+                    <option value="ph">酸鹼 pH 值</option>
+                    <option value="dissolved_oxygen">水中溶氧量 (mg/L)</option>
+                    <option value="water_level">目前水位 (m)</option>
+                </select>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn-secondary" id="cancel-sensor-modal">取消</button>
+            <button class="btn-primary" id="save-sensor-btn">確認建立</button>
+        </div>
+    </div>
+</div>
+
+<!-- Add Water Wheel Modal -->
+<div class="modal-backdrop" id="add-wheel-modal">
+    <div class="glass-panel modal-box">
+        <div class="modal-header">
+            <h3 style="font-size: 20px; display: flex; align-items: center; gap: 8px;"><i class="fas fa-plus-circle" style="color:var(--color-accent);"></i> 新增增氧水車</h3>
+            <button class="modal-close" id="close-wheel-modal"><i class="fas fa-times"></i></button>
+        </div>
+        <div class="modal-body">
+            <div class="form-group">
+                <label for="wheel-name-input">水車名稱/編號</label>
+                <input type="text" id="wheel-name-input" placeholder="例如: 增氧水車 03">
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn-secondary" id="cancel-wheel-modal">取消</button>
+            <button class="btn-primary" id="save-wheel-btn">確認建立</button>
+        </div>
+    </div>
+</div>
+
+<!-- AR Preview Simulator Modal -->
+<div class="modal-backdrop" id="ar-modal">
+    <div class="glass-panel modal-box" style="width: 90%; max-width: 800px; height: 85vh; padding: 0; display: flex; flex-direction: column;">
+        <div class="modal-header" style="padding: 20px; border-bottom: 1px solid var(--border-color); margin-bottom: 0;">
+            <h3 style="font-size: 20px;"><i class="fas fa-vr-cardboard"></i> AR 實境虛擬投影 (Heads-Up-Display HUD)</h3>
+            <button class="modal-close" id="close-ar-modal"><i class="fas fa-times"></i></button>
+        </div>
+        
+        <div style="flex: 1; position: relative; background: #000; overflow: hidden;">
+            <!-- Camera Feed Mock -->
+            <video id="ar-video" style="width: 100%; height: 100%; object-fit: cover; position: absolute; top:0; left:0; transform: scaleX(-1);"></video>
+            
+            <!-- Simulated AR environment backup if camera block occurs -->
+            <div style="position: absolute; top:0; left:0; width:100%; height:100%; display: flex; align-items: center; justify-content: center; text-align: center; pointer-events: none; z-index: 1; background: radial-gradient(circle, rgba(10,15,30,0.4) 0%, rgba(0,0,0,0.85) 100%);">
+                <div style="color: rgba(255,255,255,0.15); font-size: 14px;">
+                    <i class="fas fa-video-slash" style="font-size: 48px; margin-bottom: 15px;"></i><br>
+                    相機已啟動（若未取得相機權限將顯示黑色背景）
+                </div>
+            </div>
+
+            <!-- AR Hologram Overlay Panels (HUD) -->
+            <div style="position: absolute; top: 0; left: 0; width:100%; height: 100%; z-index: 2; padding: 30px; display: flex; flex-direction: column; justify-content: space-between; pointer-events: none;">
+                
+                <!-- HUD Header -->
+                <div style="display: flex; justify-content: space-between; align-items: flex-start; text-shadow: 0 0 10px rgba(0, 242, 254, 0.8);">
+                    <div>
+                        <div style="font-size: 26px; font-weight: 800; color: var(--color-primary); font-family: 'Outfit';">AR HUD ACTIVE</div>
+                        <div style="font-size: 13px; color: var(--color-secondary);" id="ar-pond-name">魚池 Alpha (Shrimp)</div>
+                    </div>
+                    <div style="text-align: right; font-family: monospace; color: var(--color-primary); font-size: 13px;">
+                        SYSTEM COMPATIBILITY: OK<br>
+                        FPS: 60.0 // LATENCY: 12ms
+                    </div>
+                </div>
+
+                <!-- Center Targeting Scope (AR Target) -->
+                <div style="align-self: center; display: flex; flex-direction: column; align-items: center; justify-content: center;">
+                    <!-- Reticle -->
+                    <div style="width: 140px; height: 140px; border: 2px dashed rgba(0, 242, 254, 0.4); border-radius: 50%; display: flex; align-items: center; justify-content: center; animation: rotate 20s linear infinite;">
+                        <div style="width: 110px; height: 110px; border: 1px solid rgba(161, 140, 209, 0.6); border-radius: 50%;"></div>
+                    </div>
+                    <div style="margin-top: 10px; background: rgba(0,0,0,0.6); padding: 4px 12px; border-radius: 4px; border: 1px solid var(--color-primary); font-size: 11px; font-family: monospace; color: var(--color-primary);">
+                        TARGET LOCK: FISH POND BASIN
+                    </div>
+                </div>
+
+                <!-- HUD Telemetry stats (glowing overlays) -->
+                <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px;">
+                    
+                    <div style="background: rgba(18, 24, 35, 0.8); border: 2px solid var(--color-danger); border-radius: 12px; padding: 14px; box-shadow: 0 0 15px rgba(255, 0, 127, 0.35); backdrop-filter: blur(8px);">
+                        <div style="font-size: 11px; color: var(--text-secondary); text-transform: uppercase;">TEMP METRIC</div>
+                        <div style="font-size: 26px; font-weight: 800; color: #fff; margin-top: 2px;"><span id="ar-temp-val">--</span>°C</div>
+                        <div style="height: 4px; background: rgba(255, 0, 127, 0.2); margin-top: 8px; border-radius: 2px;">
+                            <div style="width: 78%; height: 100%; background: var(--color-danger); border-radius: 2px;"></div>
+                        </div>
+                    </div>
+
+                    <div style="background: rgba(18, 24, 35, 0.8); border: 2px solid var(--color-success); border-radius: 12px; padding: 14px; box-shadow: 0 0 15px rgba(0, 255, 135, 0.35); backdrop-filter: blur(8px);">
+                        <div style="font-size: 11px; color: var(--text-secondary); text-transform: uppercase;">PH BALANCE</div>
+                        <div style="font-size: 26px; font-weight: 800; color: #fff; margin-top: 2px;"><span id="ar-ph-val">--</span></div>
+                        <div style="height: 4px; background: rgba(0, 255, 135, 0.2); margin-top: 8px; border-radius: 2px;">
+                            <div style="width: 72%; height: 100%; background: var(--color-success); border-radius: 2px;"></div>
+                        </div>
+                    </div>
+
+                    <div style="background: rgba(18, 24, 35, 0.8); border: 2px solid var(--color-secondary); border-radius: 12px; padding: 14px; box-shadow: 0 0 15px rgba(79, 172, 254, 0.35); backdrop-filter: blur(8px);">
+                        <div style="font-size: 11px; color: var(--text-secondary); text-transform: uppercase;">DISSOLVED O2</div>
+                        <div style="font-size: 26px; font-weight: 800; color: #fff; margin-top: 2px;"><span id="ar-do-val">--</span> mg/L</div>
+                        <div style="height: 4px; background: rgba(79, 172, 254, 0.2); margin-top: 8px; border-radius: 2px;">
+                            <div style="width: 65%; height: 100%; background: var(--color-secondary); border-radius: 2px;"></div>
+                        </div>
+                    </div>
+
+                </div>
+
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- IoT Physical Sensor Integration Modal -->
+<div class="modal-backdrop" id="iot-modal">
+    <div class="glass-panel modal-box" style="width: 90%; max-width: 650px; max-height: 80vh; overflow-y: auto; text-align: left;">
+        <div class="modal-header" style="border-bottom: 1px solid var(--border-color); padding-bottom: 12px; margin-bottom: 16px;">
+            <h3 style="font-size: 20px; display: flex; align-items: center; gap: 10px;"><i class="fas fa-wifi" style="color:var(--color-primary)"></i> 實體感測器串接指引</h3>
+            <button class="modal-close" id="close-iot-modal"><i class="fas fa-times"></i></button>
+        </div>
+        <div class="modal-body" style="font-size: 13.5px; line-height: 1.6; color: var(--text-secondary); display: flex; flex-direction: column; gap: 16px;">
+            <p>本平台已內建標準 HTTP REST API。您可以讓您的實體 IoT 硬體裝置（如 ESP32、ESP8266 或 Raspberry Pi）定時透過 WiFi 發送 HTTP POST 請求來同步實體量測數據。</p>
+            
+            <div style="background: rgba(0, 0, 0, 0.3); border: 1px solid var(--border-color); padding: 14px; border-radius: 10px;">
+                <span style="font-weight: 600; color: #fff; display: flex; align-items: center; gap: 6px;"><i class="fas fa-link" style="color:var(--color-primary);"></i> API 上報端點 URL：</span>
+                <code style="color: var(--color-primary); font-family: monospace; display: block; margin-top: 6px; font-size: 13px;">POST http://&lt;your-server-ip&gt;/api/iot/report/</code>
+            </div>
+
+            <div style="background: rgba(0, 0, 0, 0.3); border: 1px solid var(--border-color); padding: 14px; border-radius: 10px;">
+                <span style="font-weight: 600; color: #fff; display: flex; align-items: center; gap: 6px;"><i class="fas fa-file-code" style="color:var(--color-accent);"></i> JSON 資料負載格式：</span>
+                <pre style="color: var(--color-accent); font-family: monospace; font-size: 12.5px; margin-top: 6px; line-height: 1.4;">
+{
+  "pond_id": <span class="current-pond-id-span" style="color:#fff; font-weight:bold;">1</span>, 
+  "sensor_type": "temperature",  // 支援: temperature, ph, dissolved_oxygen, water_level
+  "value": 26.85
+}</pre>
+            </div>
+
+            <!-- Tabs/Accordions for code examples -->
+            <div style="margin-top: 10px;">
+                <h4 style="color:#fff; margin-bottom: 8px; display: flex; align-items: center; gap: 6px;"><i class="fab fa-python" style="color:#ffe066"></i> Python 快速測試腳本</h4>
+                <pre style="background: #0f141d; border: 1px solid var(--border-color); padding: 14px; border-radius: 10px; font-size: 11px; font-family: monospace; color: var(--text-primary); overflow-x: auto; white-space: pre; line-height: 1.4;">
+import requests
+import json
+
+url = "http://127.0.0.1:8000/api/iot/report/"
+payload = {
+    "pond_id": <span class="current-pond-id-span">1</span>,
+    "sensor_type": "temperature",
+    "value": 26.85
+}
+headers = {'Content-Type': 'application/json'}
+
+response = requests.post(url, data=json.dumps(payload), headers=headers)
+print("伺服器回應:", response.json())
+                </pre>
+            </div>
+
+            <div style="margin-top: 10px;">
+                <h4 style="color:#fff; margin-bottom: 8px; display: flex; align-items: center; gap: 6px;"><i class="fas fa-microchip" style="color:#a18cd1"></i> ESP32 Arduino 實體連網代碼</h4>
+                <pre style="background: #0f141d; border: 1px solid var(--border-color); padding: 14px; border-radius: 10px; font-size: 11px; font-family: monospace; color: var(--text-primary); overflow-x: auto; white-space: pre; line-height: 1.4;">
+#include &lt;WiFi.h&gt;
+#include &lt;HTTPClient.h&gt;
+
+const char* ssid = "YOUR_WIFI_SSID";
+const char* password = "YOUR_WIFI_PASSWORD";
+const char* serverName = "http://&lt;your-server-ip&gt;/api/iot/report/";
+
+void setup() {
+  Serial.begin(115200);
+  WiFi.begin(ssid, password);
+  while (WiFi.status() != WL_CONNECTED) { delay(500); }
+}
+
+void loop() {
+  if (WiFi.status() == WL_CONNECTED) {
+    HTTPClient http;
+    http.begin(serverName);
+    http.addHeader("Content-Type", "application/json");
+    
+    // 讀取實體溫度感測器，並封裝成 JSON 格式
+    String jsonPayload = "{\"pond_id\":<span class="current-pond-id-span">1</span>,\"sensor_type\":\"temperature\",\"value\":25.8}";
+    
+    int httpResponseCode = http.POST(jsonPayload);
+    Serial.print("HTTP Response Code: ");
+    Serial.println(httpResponseCode);
+    http.end();
+  }
+  delay(10000); // 每 10 秒上報一次
+}
+                </pre>
+            </div>
+        </div>
+        <div class="modal-footer" style="border-top: 1px solid var(--border-color); padding-top: 16px;">
+            <button class="btn-primary" id="close-iot-btn">確認</button>
+        </div>
+    </div>
+</div>
+
+<!-- Load dashboard javascript -->
+<script src="{% static 'js/dashboard.js' %}"></script>
+{% endblock %}
