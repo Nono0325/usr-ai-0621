@@ -78,6 +78,16 @@
                 <!-- 3D Render Panel -->
                 <div class="glass-panel visualizer-container" id="three-container">
                     <canvas id="three-canvas"></canvas>
+                    
+                    <!-- Scan HUD Overlay -->
+                    <div id="scan-hud" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 255, 136, 0.03); border: 2px solid rgba(0, 255, 136, 0.2); border-radius: 16px; pointer-events: none; display: none; z-index: 12; align-items: center; justify-content: center; flex-direction: column;">
+                        <div style="font-size: 24px; font-weight: bold; color: #00ff88; text-shadow: 0 0 10px rgba(0,255,136,0.5); letter-spacing: 2px;">AI 智慧掃描中...</div>
+                        <div style="width: 200px; height: 6px; background: rgba(255,255,255,0.1); border-radius: 3px; margin-top: 15px; overflow: hidden; position: relative;">
+                            <div id="scan-progress-bar" style="position: absolute; left: 0; top: 0; height: 100%; width: 0%; background: #00ff88; box-shadow: 0 0 8px #00ff88; transition: width 0.1s linear;"></div>
+                        </div>
+                        <div id="scan-progress-text" style="color: rgba(255,255,255,0.7); font-size: 12px; margin-top: 8px; font-family: monospace;">0%</div>
+                    </div>
+
                     <div class="visualizer-overlay">
                         <div class="visualizer-title" id="pond-title-3d">
                             {% if ponds.0 %}{{ ponds.0.name }}{% else %}未選取魚池{% endif %}
@@ -98,6 +108,25 @@
                             <input type="checkbox" id="creature-crab-cb" style="width: 14px; height: 14px; accent-color: var(--color-primary); cursor: pointer;"> 🦀 螃蟹
                         </label>
                     </div>
+                    <!-- Dynamic Weather and Feed controls -->
+                    <div style="position: absolute; bottom: 20px; left: 20px; z-index: 10; display: flex; gap: 8px;">
+                        <button class="ar-btn" id="weather-day-btn" style="background: rgba(0, 242, 254, 0.15); border-color: rgba(0, 242, 254, 0.3); color: #fff; padding: 6px 12px; font-size: 12.5px; border-radius: 20px;">
+                            <i class="fas fa-sun" style="color: #ffaa00;"></i> 白天
+                        </button>
+                        <button class="ar-btn" id="weather-night-btn" style="background: rgba(255, 255, 255, 0.05); border-color: rgba(255, 255, 255, 0.1); color: var(--text-secondary); padding: 6px 12px; font-size: 12.5px; border-radius: 20px;">
+                            <i class="fas fa-moon" style="color: #4facfe;"></i> 黑夜
+                        </button>
+                        <button class="ar-btn" id="weather-rain-btn" style="background: rgba(255, 255, 255, 0.05); border-color: rgba(255, 255, 255, 0.1); color: var(--text-secondary); padding: 6px 12px; font-size: 12.5px; border-radius: 20px;">
+                            <i class="fas fa-cloud-showers-heavy" style="color: #a18cd1;"></i> 雨天
+                        </button>
+                        <button class="ar-btn" id="feed-fish-btn" style="background: rgba(255, 159, 67, 0.15); border-color: rgba(255, 159, 67, 0.3); color: var(--color-warning); padding: 6px 12px; font-size: 12.5px; border-radius: 20px;">
+                            <i class="fas fa-cookie"></i> 投餵飼料
+                        </button>
+                        <button class="ar-btn" id="ai-scan-btn" style="background: rgba(46, 213, 115, 0.15); border-color: rgba(46, 213, 115, 0.3); color: #2ed573; padding: 6px 12px; font-size: 12.5px; border-radius: 20px;">
+                            <i class="fas fa-robot"></i> AI 智慧掃描
+                        </button>
+                    </div>
+
                     <div class="visualizer-actions">
                         <button class="ar-btn" id="iot-mode-btn" style="background: rgba(0, 242, 254, 0.15); border-color: rgba(0, 242, 254, 0.3);">
                             <i class="fas fa-wifi"></i> 實體感測器串接
@@ -378,6 +407,65 @@
         <div class="modal-footer">
             <button class="btn-secondary" id="cancel-wheel-modal">取消</button>
             <button class="btn-primary" id="save-wheel-btn">確認建立</button>
+        </div>
+    </div>
+</div>
+
+<!-- AI Scan Result Modal -->
+<div class="modal-backdrop" id="scan-modal">
+    <div class="glass-panel modal-box" style="border: 1px solid rgba(0, 255, 136, 0.2); box-shadow: 0 8px 32px 0 rgba(0, 255, 136, 0.1); background: rgba(10, 15, 30, 0.85); backdrop-filter: blur(20px);">
+        <div class="modal-header" style="border-bottom: 1px solid rgba(255,255,255,0.08); padding-bottom: 14px; margin-bottom: 20px;">
+            <div style="display: flex; align-items: center; gap: 12px;">
+                <div style="background: rgba(0, 255, 136, 0.15); width: 42px; height: 42px; border-radius: 50%; display: flex; align-items: center; justify-content: center; border: 1px solid rgba(0, 255, 136, 0.3);">
+                    <i class="fas fa-robot" style="color: #00ff88; font-size: 20px;"></i>
+                </div>
+                <div>
+                    <h3 style="margin: 0; color: #fff; font-size: 18px; font-weight: 600; letter-spacing: 0.5px;">AI 生物與水質健檢報告</h3>
+                    <div style="font-size: 11px; color: rgba(255,255,255,0.5); font-family: monospace;" id="scan-report-time">GEN-DATE: --</div>
+                </div>
+            </div>
+            <button class="modal-close" id="close-scan-modal-x"><i class="fas fa-times"></i></button>
+        </div>
+        <div class="modal-body" style="display: flex; flex-direction: column; gap: 16px; color: #fff;">
+            <!-- Creature Statistics -->
+            <div style="background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.05); padding: 12px 16px; border-radius: 12px;">
+                <div style="font-size: 12px; color: var(--text-secondary); margin-bottom: 8px;"><i class="fas fa-fish"></i> 魚池群落分佈</div>
+                <div style="display: flex; justify-content: space-between; font-size: 14px; font-weight: 500; color: #fff;" id="scan-distribution">
+                    <!-- Filled dynamically -->
+                </div>
+                <div style="font-size: 12px; color: rgba(255,255,255,0.6); margin-top: 6px;" id="scan-biomass">
+                    預估總生物量：-- kg
+                </div>
+            </div>
+            <!-- Biometrics -->
+            <div style="background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.05); padding: 12px 16px; border-radius: 12px;">
+                <div style="font-size: 12px; color: var(--text-secondary); margin-bottom: 8px;"><i class="fas fa-heartbeat"></i> 生物健康度分析</div>
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <span style="font-size: 14px; color: #fff;">活動力指標：</span>
+                    <span id="scan-activity" style="font-size: 15px; font-weight: bold; color: #00ff88;">92% (優良)</span>
+                </div>
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 8px;">
+                    <span style="font-size: 14px; color: #fff;">進食意願度：</span>
+                    <span id="scan-appetite" style="font-size: 15px; font-weight: bold; color: #ff9f43;">中等</span>
+                </div>
+            </div>
+            <!-- Water Telemetry Analysis -->
+            <div style="background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.05); padding: 12px 16px; border-radius: 12px;">
+                <div style="font-size: 12px; color: var(--text-secondary); margin-bottom: 8px;"><i class="fas fa-sliders-h"></i> 即時水質關聯診斷</div>
+                <div style="font-size: 13px; line-height: 1.5; color: #fff;" id="scan-diagnosis">
+                    <!-- Filled dynamically based on sensors -->
+                </div>
+            </div>
+            <!-- AI Recommendation -->
+            <div style="background: rgba(0, 255, 136, 0.05); border: 1px solid rgba(0, 255, 136, 0.15); padding: 12px 16px; border-radius: 12px;">
+                <div style="font-size: 12px; color: #00ff88; font-weight: bold; margin-bottom: 6px;"><i class="fas fa-brain"></i> AI 智慧決策建議</div>
+                <div style="font-size: 13px; line-height: 1.5; color: rgba(255,255,255,0.9);" id="scan-recommendation">
+                    <!-- Filled dynamically -->
+                </div>
+            </div>
+        </div>
+        <div class="modal-footer" style="margin-top: 24px; display: flex; justify-content: flex-end;">
+            <button class="btn-secondary" id="close-scan-modal-btn">關閉報告</button>
         </div>
     </div>
 </div>

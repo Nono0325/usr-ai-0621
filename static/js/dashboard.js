@@ -6,10 +6,17 @@ let chartInstance = null;
 let chatHistory = [];
 let wheelSpinningSpeedFactor = 0.0;
 let activeCreatures = { fish: true, shrimp: false, crab: false };
+let currentWeatherMode = 'day';
+let feedParticles = [];
+let rainSystem = null;
+let isScanning = false;
+let scanMesh = null;
+let scanProgress = 0;
 
 // Three.js 3D Scene variables
 let scene, camera, renderer;
 let waterWheelMesh, waterMesh, fishGroup, bubbleSystem;
+let ambientLight, dirLight;
 let isWheelSpinning = false;
 let fishSwimSpeed = 0.02;
 
@@ -77,6 +84,14 @@ function setupEventListeners() {
             
             // Update 3D Title
             document.getElementById('pond-title-3d').textContent = card.querySelector('.pond-title').textContent;
+
+            // Clear any active feed pellets
+            if (feedParticles.length > 0) {
+                feedParticles.forEach(p => {
+                    if (scene) scene.remove(p.mesh);
+                });
+                feedParticles = [];
+            }
         });
     });
 
@@ -95,6 +110,38 @@ function setupEventListeners() {
     if (fishCb) fishCb.addEventListener('change', onCbChange);
     if (shrimpCb) shrimpCb.addEventListener('change', onCbChange);
     if (crabCb) crabCb.addEventListener('change', onCbChange);
+
+    // Weather button listeners
+    const dayBtn = document.getElementById('weather-day-btn');
+    const nightBtn = document.getElementById('weather-night-btn');
+    const rainBtn = document.getElementById('weather-rain-btn');
+    
+    if (dayBtn) dayBtn.addEventListener('click', () => setWeatherMode('day'));
+    if (nightBtn) nightBtn.addEventListener('click', () => setWeatherMode('night'));
+    if (rainBtn) rainBtn.addEventListener('click', () => setWeatherMode('rain'));
+    
+    // Feed button listener
+    const feedBtn = document.getElementById('feed-fish-btn');
+    if (feedBtn) {
+        feedBtn.addEventListener('click', () => feedFish());
+    }
+
+    // AI Scan button listener
+    const aiScanBtn = document.getElementById('ai-scan-btn');
+    if (aiScanBtn) {
+        aiScanBtn.addEventListener('click', () => triggerAIScan());
+    }
+    
+    // Scan modal close listeners
+    const closeScanBtn = document.getElementById('close-scan-modal-btn');
+    const closeScanX = document.getElementById('close-scan-modal-x');
+    const scanModal = document.getElementById('scan-modal');
+    if (closeScanBtn && scanModal) {
+        closeScanBtn.addEventListener('click', () => scanModal.classList.remove('open'));
+    }
+    if (closeScanX && scanModal) {
+        closeScanX.addEventListener('click', () => scanModal.classList.remove('open'));
+    }
 
     // 2. Auto Aeration Configuration Button
     const saveAutoBtn = document.getElementById('save-auto-aeration-btn');
@@ -432,10 +479,10 @@ function initThreeJS() {
     renderer.shadowMap.enabled = true;
 
     // Lights
-    const ambientLight = new THREE.AmbientLight(0x223355, 0.6);
+    ambientLight = new THREE.AmbientLight(0x223355, 0.6);
     scene.add(ambientLight);
 
-    const dirLight = new THREE.DirectionalLight(0x5588ff, 1.2);
+    dirLight = new THREE.DirectionalLight(0x5588ff, 1.2);
     dirLight.position.set(5, 15, 5);
     dirLight.castShadow = true;
     scene.add(dirLight);
@@ -837,6 +884,13 @@ function spawnCreatures() {
                 wiggleSpeed: 8 + Math.random() * 6
             };
             
+            // If in night mode, activate emissive bioluminescence glow immediately
+            if (currentWeatherMode === 'night') {
+                creature.children.forEach(child => {
+                    if (child.material) child.material.emissiveIntensity = 1.8;
+                });
+            }
+            
             fishGroup.add(creature);
         }
     });
@@ -856,59 +910,149 @@ function animate() {
         waterWheelMesh.rotation.z -= 0.06 * wheelSpinningSpeedFactor; // Scale speed by active wheels ratio
     }
 
-    // 3. Creatures Swimming/Walking
+    // 3. Creatures Swimming/Walking (with dynamic Feed Chasing)
     if (fishGroup) {
         fishGroup.children.forEach(creature => {
             const type = creature.userData.type;
-            creature.userData.angle += creature.userData.speed;
             const r = creature.userData.radius;
             const a = creature.userData.angle;
             
-            // Move in circular path
-            creature.position.x = Math.cos(a) * r;
-            creature.position.z = Math.sin(a) * r;
+            // Move in circular path OR chase feed
+            let targetFeed = null;
+            let minDist = 999;
             
-            if (type === 'fish') {
-                // Set orientation tangent to path (swimming forward)
-                creature.rotation.y = -a + Math.PI / 2;
+            // Fish and shrimp chase feed (crabs stay on bottom but can chase food that reaches bottom)
+            if (type !== 'crab' && feedParticles.length > 0) {
+                feedParticles.forEach(pellet => {
+                    const d = creature.position.distanceTo(pellet.mesh.position);
+                    if (d < minDist) {
+                        minDist = d;
+                        targetFeed = pellet;
+                    }
+                });
+            }
+            
+            // If a close feed exists, steer towards it
+            if (targetFeed && minDist < 3.5) { // Only chase if within 3.5 units
+                const targetPos = targetFeed.mesh.position;
                 
-                // Tail wagging animation
-                if (creature.userData.tailPivot) {
-                    creature.userData.tailPivot.rotation.y = Math.sin(Date.now() * 0.0015 * creature.userData.wiggleSpeed) * 0.45;
+                // Direction vector to target
+                const dir = new THREE.Vector3().subVectors(targetPos, creature.position);
+                dir.normalize();
+                
+                // Move towards target
+                const swimSpeed = creature.userData.speed * 1.5; // swim faster when chasing food!
+                creature.position.addScaledVector(dir, swimSpeed);
+                
+                // Face the food
+                const angleToFood = Math.atan2(dir.x, dir.z);
+                creature.rotation.y = angleToFood;
+                
+                // If close enough, eat it!
+                if (minDist < 0.22) {
+                    // Remove feed from scene
+                    scene.remove(targetFeed.mesh);
+                    // Remove from array
+                    const idx = feedParticles.indexOf(targetFeed);
+                    if (idx > -1) {
+                        feedParticles.splice(idx, 1);
+                    }
+                    
+                    // Trigger a happy wiggle boost
+                    creature.userData.wiggleSpeed = 25; // wiggle extremely fast!
+                    setTimeout(() => {
+                        creature.userData.wiggleSpeed = 8 + Math.random() * 6; // restore wiggle speed
+                    }, 1200);
                 }
                 
-                // Bobbing up/down wave
-                creature.position.y = creature.userData.baseY + 0.04 * Math.sin(Date.now() * 0.001 * creature.userData.wiggleSpeed);
-                
-            } else if (type === 'shrimp') {
-                // Shrimps swim forward, face tangent
-                creature.rotation.y = -a + Math.PI / 2;
-                
-                // Swim pleopods (legs) wiggling
-                if (creature.userData.legs) {
-                    creature.userData.legs.forEach((leg, idx) => {
-                        leg.rotation.x = Math.sin(Date.now() * 0.015 + idx) * 0.35;
-                    });
+                // Keep tail/pleopods wiggling
+                if (type === 'fish') {
+                    if (creature.userData.tailPivot) {
+                        creature.userData.tailPivot.rotation.y = Math.sin(Date.now() * 0.0015 * creature.userData.wiggleSpeed) * 0.45;
+                    }
+                } else if (type === 'shrimp') {
+                    if (creature.userData.legs) {
+                        creature.userData.legs.forEach((leg, idx) => {
+                            leg.rotation.x = Math.sin(Date.now() * 0.015 + idx) * 0.35;
+                        });
+                    }
                 }
-                
-                // Bobbing and slight pulse
-                const pulse = Math.sin(Date.now() * 0.005) * 0.04;
-                creature.position.y = creature.userData.baseY + 0.05 * Math.sin(Date.now() * 0.002 * creature.userData.wiggleSpeed);
-                creature.position.x += Math.sin(-a) * pulse;
-                creature.position.z += Math.cos(-a) * pulse;
-                
             } else if (type === 'crab') {
-                // Crabs walk sideways! Their lateral side faces the travel direction.
-                creature.rotation.y = -a; 
+                // Crab locomotion (always crawl sideways on bottom, can also eat pellets that reach the bottom!)
+                let bottomFeed = null;
+                let bottomMinDist = 999;
                 
-                // Walking legs wiggling
+                // Crabs only search for pellets that have sunk close to bottom (y < -0.8)
+                feedParticles.forEach(pellet => {
+                    if (pellet.mesh.position.y < -0.8) {
+                        const d = creature.position.distanceTo(pellet.mesh.position);
+                        if (d < bottomMinDist) {
+                            bottomMinDist = d;
+                            bottomFeed = pellet;
+                        }
+                    }
+                });
+                
+                if (bottomFeed && bottomMinDist < 2.0) {
+                    // Crawl towards bottom food
+                    const targetPos = bottomFeed.mesh.position;
+                    const dir = new THREE.Vector3().subVectors(targetPos, creature.position);
+                    dir.y = 0; // stay on bottom plane
+                    dir.normalize();
+                    
+                    creature.position.addScaledVector(dir, creature.userData.speed * 1.3);
+                    
+                    // Crabs walk sideways! Face offset
+                    const angleToFood = Math.atan2(dir.x, dir.z);
+                    creature.rotation.y = angleToFood - Math.PI / 2;
+                    
+                    // Eat it!
+                    if (bottomMinDist < 0.25) {
+                        scene.remove(bottomFeed.mesh);
+                        const idx = feedParticles.indexOf(bottomFeed);
+                        if (idx > -1) {
+                            feedParticles.splice(idx, 1);
+                        }
+                    }
+                } else {
+                    // Default crawl sideways
+                    creature.userData.angle += creature.userData.speed;
+                    creature.position.x = Math.cos(a) * r;
+                    creature.position.z = Math.sin(a) * r;
+                    creature.rotation.y = -a;
+                }
+                
+                // Animate crab walking legs
                 if (creature.userData.legs) {
                     creature.userData.legs.forEach((leg, idx) => {
                         leg.rotation.z = Math.sin(Date.now() * 0.012 + idx) * 0.35;
                     });
                 }
-                // Crabs crawl on bottom
                 creature.position.y = creature.userData.baseY;
+            } else {
+                // Default circular swimming path
+                creature.userData.angle += creature.userData.speed;
+                creature.position.x = Math.cos(a) * r;
+                creature.position.z = Math.sin(a) * r;
+                
+                if (type === 'fish') {
+                    creature.rotation.y = -a + Math.PI / 2;
+                    if (creature.userData.tailPivot) {
+                        creature.userData.tailPivot.rotation.y = Math.sin(Date.now() * 0.0015 * creature.userData.wiggleSpeed) * 0.45;
+                    }
+                    creature.position.y = creature.userData.baseY + 0.04 * Math.sin(Date.now() * 0.001 * creature.userData.wiggleSpeed);
+                } else if (type === 'shrimp') {
+                    creature.rotation.y = -a + Math.PI / 2;
+                    if (creature.userData.legs) {
+                        creature.userData.legs.forEach((leg, idx) => {
+                            leg.rotation.x = Math.sin(Date.now() * 0.015 + idx) * 0.35;
+                        });
+                    }
+                    const pulse = Math.sin(Date.now() * 0.005) * 0.04;
+                    creature.position.y = creature.userData.baseY + 0.05 * Math.sin(Date.now() * 0.002 * creature.userData.wiggleSpeed);
+                    creature.position.x += Math.sin(-a) * pulse;
+                    creature.position.z += Math.cos(-a) * pulse;
+                }
             }
         });
     }
@@ -943,11 +1087,76 @@ function animate() {
         posAttr.needsUpdate = true;
     }
 
+    // 5. Rain Animation
+    if (rainSystem && rainSystem.visible) {
+        const posAttr = rainSystem.geometry.attributes.position;
+        const velocities = rainSystem.userData.velocities;
+        
+        for (let i = 0; i < rainSystem.userData.count; i++) {
+            posAttr.array[i*3+1] += velocities[i];
+            
+            if (posAttr.array[i*3+1] <= 0.05) {
+                const angle = Math.random() * Math.PI * 2;
+                const radius = Math.random() * 5.0;
+                posAttr.array[i*3] = Math.cos(angle) * radius;
+                posAttr.array[i*3+1] = 8.0;
+                posAttr.array[i*3+2] = Math.sin(angle) * radius;
+            }
+        }
+        posAttr.needsUpdate = true;
+    }
+
+    // 6. Feed Particles Physics & Sinking
+    if (feedParticles.length > 0) {
+        feedParticles.forEach(pellet => {
+            if (!pellet.isSinking) {
+                pellet.mesh.position.y -= pellet.speedY;
+                if (pellet.mesh.position.y <= 0.05) {
+                    pellet.isSinking = true;
+                }
+            } else {
+                pellet.mesh.position.y -= pellet.sinkingSpeed;
+                if (pellet.mesh.position.y <= -1.15) {
+                    pellet.mesh.position.y = -1.15;
+                }
+            }
+        });
+    }
+
     // Slow orbital rotation of camera to make scene alive
     const timer = Date.now() * 0.0001;
     camera.position.x = 12 * Math.sin(timer);
     camera.position.z = 12 * Math.cos(timer);
     camera.lookAt(0, 0, 0);
+
+    // 7. AI Scan Animation and Progress updating
+    if (isScanning && scanMesh) {
+        scanMesh.position.y -= 0.015;
+        
+        // Progress calculates from y: 1.0 (0%) down to -1.2 (100%)
+        // delta is 2.2
+        const progress = Math.min(100, Math.floor(((1.0 - scanMesh.position.y) / 2.2) * 100));
+        
+        const pBar = document.getElementById('scan-progress-bar');
+        const pText = document.getElementById('scan-progress-text');
+        if (pBar) pBar.style.width = progress + '%';
+        if (pText) pText.textContent = progress + '%';
+        
+        if (scanMesh.position.y <= -1.2) {
+            scene.remove(scanMesh);
+            scanMesh = null;
+            isScanning = false;
+            
+            // Hide HUD
+            const hud = document.getElementById('scan-hud');
+            if (hud) hud.style.display = 'none';
+            
+            // Generate report content & open modal
+            generateAIScanReport();
+            const scanModal = document.getElementById('scan-modal');
+            if (scanModal) scanModal.classList.add('open');
+        }
+    }
 
     renderer.render(scene, camera);
 }
@@ -1500,3 +1709,354 @@ function saveAutoAerationConfig() {
     })
     .catch(err => console.error(err));
 }
+
+// --- Weather Lighting Cycles & Feeding Simulation Functions ---
+
+function setWeatherMode(mode) {
+    currentWeatherMode = mode;
+    
+    const dayBtn = document.getElementById('weather-day-btn');
+    const nightBtn = document.getElementById('weather-night-btn');
+    const rainBtn = document.getElementById('weather-rain-btn');
+    
+    // Reset background and borders
+    if (dayBtn) { dayBtn.style.background = 'rgba(255, 255, 255, 0.05)'; dayBtn.style.borderColor = 'rgba(255, 255, 255, 0.1)'; dayBtn.style.color = 'var(--text-secondary)'; }
+    if (nightBtn) { nightBtn.style.background = 'rgba(255, 255, 255, 0.05)'; nightBtn.style.borderColor = 'rgba(255, 255, 255, 0.1)'; nightBtn.style.color = 'var(--text-secondary)'; }
+    if (rainBtn) { rainBtn.style.background = 'rgba(255, 255, 255, 0.05)'; rainBtn.style.borderColor = 'rgba(255, 255, 255, 0.1)'; rainBtn.style.color = 'var(--text-secondary)'; }
+    
+    // Set active button style
+    const activeBtn = document.getElementById(`weather-${mode}-btn`);
+    if (activeBtn) {
+        activeBtn.style.background = 'rgba(0, 242, 254, 0.15)';
+        activeBtn.style.borderColor = 'rgba(0, 242, 254, 0.3)';
+        activeBtn.style.color = '#fff';
+    }
+    
+    // Update lights in Three.js
+    if (!ambientLight || !dirLight || !scene) return;
+    
+    if (mode === 'day') {
+        ambientLight.color.setHex(0x223355);
+        ambientLight.intensity = 0.6;
+        dirLight.color.setHex(0x5588ff);
+        dirLight.intensity = 1.2;
+        scene.background.setHex(0x0a0f1d);
+        if (scene.fog) {
+            scene.fog.color.setHex(0x0a0f1d);
+        }
+        if (rainSystem) rainSystem.visible = false;
+        
+        // Reset bioluminescent glow
+        if (fishGroup) {
+            fishGroup.children.forEach(c => {
+                c.children.forEach(child => {
+                    if (child.material) child.material.emissiveIntensity = 0.2;
+                });
+            });
+        }
+    } else if (mode === 'night') {
+        ambientLight.color.setHex(0x080c18);
+        ambientLight.intensity = 0.2;
+        dirLight.color.setHex(0x224488);
+        dirLight.intensity = 0.4;
+        scene.background.setHex(0x03050a);
+        if (scene.fog) {
+            scene.fog.color.setHex(0x03050a);
+        }
+        if (rainSystem) rainSystem.visible = false;
+        
+        // Enable bioluminescent glow (neon glowing biological lights)
+        if (fishGroup) {
+            fishGroup.children.forEach(c => {
+                c.children.forEach(child => {
+                    if (child.material) child.material.emissiveIntensity = 1.8;
+                });
+            });
+        }
+    } else if (mode === 'rain') {
+        ambientLight.color.setHex(0x222a35);
+        ambientLight.intensity = 0.4;
+        dirLight.color.setHex(0x445566);
+        dirLight.intensity = 0.5;
+        scene.background.setHex(0x080a0f);
+        if (scene.fog) {
+            scene.fog.color.setHex(0x080a0f);
+        }
+        
+        initRainSystem();
+        if (rainSystem) rainSystem.visible = true;
+        
+        // Reset bioluminescent glow
+        if (fishGroup) {
+            fishGroup.children.forEach(c => {
+                c.children.forEach(child => {
+                    if (child.material) child.material.emissiveIntensity = 0.2;
+                });
+            });
+        }
+    }
+}
+
+function initRainSystem() {
+    if (rainSystem) return; // already initialized
+    
+    const count = 300;
+    const geo = new THREE.BufferGeometry();
+    const positions = new Float32Array(count * 3);
+    const velocities = [];
+    
+    for (let i = 0; i < count; i++) {
+        // Spawn randomly in cylinder space above the pond
+        const angle = Math.random() * Math.PI * 2;
+        const radius = Math.random() * 5.0;
+        positions[i*3] = Math.cos(angle) * radius;
+        positions[i*3+1] = 0.05 + Math.random() * 8.0; // y from water surface to sky
+        positions[i*3+2] = Math.sin(angle) * radius;
+        
+        velocities.push(-0.15 - Math.random() * 0.1); // downward speed
+    }
+    
+    geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    const mat = new THREE.PointsMaterial({
+        color: 0x88ccff,
+        size: 0.08,
+        transparent: true,
+        opacity: 0.6
+    });
+    
+    rainSystem = new THREE.Points(geo, mat);
+    rainSystem.userData = { velocities: velocities, count: count };
+    scene.add(rainSystem);
+}
+
+function feedFish() {
+    if (!scene) return;
+    
+    const count = 8;
+    const geometry = new THREE.SphereGeometry(0.05, 8, 8);
+    const material = new THREE.MeshStandardMaterial({ 
+        color: 0x8d5828, // brown food
+        roughness: 0.8 
+    });
+    
+    for (let i = 0; i < count; i++) {
+        const pellet = new THREE.Mesh(geometry, material);
+        pellet.castShadow = true;
+        
+        const angle = Math.random() * Math.PI * 2;
+        const radius = Math.random() * 4.0;
+        const y = 3.0 + Math.random() * 1.5;
+        pellet.position.set(Math.cos(angle) * radius, y, Math.sin(angle) * radius);
+        
+        scene.add(pellet);
+        feedParticles.push({
+            mesh: pellet,
+            speedY: 0.04 + Math.random() * 0.03,
+            sinkingSpeed: 0.005 + Math.random() * 0.005,
+            isSinking: false
+        });
+    }
+}
+
+// --- AI Smart Scan Functions ---
+
+function triggerAIScan() {
+    if (isScanning) return;
+    if (!scene) return;
+    
+    isScanning = true;
+    scanProgress = 0;
+    
+    // Clear previous scan mesh if exists
+    if (scanMesh) {
+        scene.remove(scanMesh);
+    }
+    
+    // Show HUD overlay
+    const hud = document.getElementById('scan-hud');
+    const pBar = document.getElementById('scan-progress-bar');
+    const pText = document.getElementById('scan-progress-text');
+    if (hud) hud.style.display = 'flex';
+    if (pBar) pBar.style.width = '0%';
+    if (pText) pText.textContent = '0%';
+    
+    // Create Three.js scanning disc/mesh
+    const scanGeometry = new THREE.RingGeometry(0, 4.8, 32);
+    scanGeometry.rotateX(-Math.PI / 2);
+    const scanMaterial = new THREE.MeshBasicMaterial({
+        color: 0x00ff88,
+        transparent: true,
+        opacity: 0.25,
+        side: THREE.DoubleSide
+    });
+    scanMesh = new THREE.Mesh(scanGeometry, scanMaterial);
+    
+    // Add bright green outline ring
+    const ringGeo = new THREE.RingGeometry(4.7, 4.8, 64);
+    ringGeo.rotateX(-Math.PI / 2);
+    const ringMat = new THREE.MeshBasicMaterial({
+        color: 0x00ff88,
+        side: THREE.DoubleSide
+    });
+    const ringMesh = new THREE.Mesh(ringGeo, ringMat);
+    scanMesh.add(ringMesh);
+    
+    // Position scan disc above water
+    scanMesh.position.set(0, 1.0, 0);
+    scene.add(scanMesh);
+}
+
+function generateAIScanReport() {
+    // Current date/time
+    const dateText = document.getElementById('scan-report-time');
+    if (dateText) {
+        const now = new Date();
+        dateText.textContent = 'GEN-DATE: ' + now.toLocaleString();
+    }
+    
+    // Community distribution & Biomass
+    let fishCount = activeCreatures.fish ? 4 : 0;
+    let shrimpCount = activeCreatures.shrimp ? 4 : 0;
+    let crabCount = activeCreatures.crab ? 4 : 0;
+    let totalCount = fishCount + shrimpCount + crabCount;
+    
+    let distHtml = '';
+    let weight = 0;
+    
+    if (totalCount === 0) {
+        distHtml = '<span style="color: var(--text-secondary);">池內無生物</span>';
+        weight = 0;
+    } else {
+        const distParts = [];
+        if (fishCount > 0) {
+            const pct = Math.round((fishCount / totalCount) * 100);
+            distParts.push(`🐟 魚類 (${fishCount} 隻 / ${pct}%)`);
+            weight += 1.4; // 0.35kg each
+        }
+        if (shrimpCount > 0) {
+            const pct = Math.round((shrimpCount / totalCount) * 100);
+            distParts.push(`🦐 蝦類 (${shrimpCount} 隻 / ${pct}%)`);
+            weight += 0.2; // 0.05kg each
+        }
+        if (crabCount > 0) {
+            const pct = Math.round((crabCount / totalCount) * 100);
+            distParts.push(`🦀 螃蟹 (${crabCount} 隻 / ${pct}%)`);
+            weight += 0.8; // 0.20kg each
+        }
+        distHtml = distParts.join('<br>');
+        // Add random variance (+/- 10%)
+        weight = weight * (0.9 + Math.random() * 0.2);
+    }
+    
+    const scanDist = document.getElementById('scan-distribution');
+    if (scanDist) scanDist.innerHTML = distHtml;
+    
+    const scanBiomass = document.getElementById('scan-biomass');
+    if (scanBiomass) scanBiomass.textContent = '預估總生物量：' + weight.toFixed(2) + ' kg';
+    
+    // Biometrics based on weather
+    const scanActivity = document.getElementById('scan-activity');
+    const scanAppetite = document.getElementById('scan-appetite');
+    
+    if (currentWeatherMode === 'day') {
+        if (scanActivity) {
+            scanActivity.textContent = (90 + Math.floor(Math.random() * 7)) + '% (優良)';
+            scanActivity.style.color = '#00ff88';
+        }
+        if (scanAppetite) {
+            scanAppetite.textContent = '高 (進食意願強烈)';
+            scanAppetite.style.color = '#00ff88';
+        }
+    } else if (currentWeatherMode === 'night') {
+        if (scanActivity) {
+            scanActivity.textContent = (65 + Math.floor(Math.random() * 10)) + '% (夜間休息/底棲活躍)';
+            scanActivity.style.color = '#4facfe';
+        }
+        if (scanAppetite) {
+            scanAppetite.textContent = '中等 (夜間掠食)';
+            scanAppetite.style.color = '#ff9f43';
+        }
+    } else { // rain
+        if (scanActivity) {
+            scanActivity.textContent = (72 + Math.floor(Math.random() * 10)) + '% (一般)';
+            scanActivity.style.color = '#a18cd1';
+        }
+        if (scanAppetite) {
+            scanAppetite.textContent = '較低 (受氣壓與水溫影響)';
+            scanAppetite.style.color = '#ff4d4d';
+        }
+    }
+    
+    // Telemetry read & diagnosis
+    const tempText = document.getElementById('temp-value')?.textContent || '25.0';
+    const phText = document.getElementById('ph-value')?.textContent || '7.5';
+    const doText = document.getElementById('do-value')?.textContent || '5.5';
+    const levelText = document.getElementById('level-value')?.textContent || '1.5';
+    
+    const temp = parseFloat(tempText);
+    const ph = parseFloat(phText);
+    const doVal = parseFloat(doText);
+    const level = parseFloat(levelText);
+    
+    let diagnosisParts = [];
+    let recParts = [];
+    
+    // DO diagnosis
+    if (doVal < 4.0) {
+        diagnosisParts.push(`🚨 <b>溶氧量極低 (${doText} mg/L)</b>：水體嚴重缺氧，對魚蝦健康有高度窒息威脅。`);
+        recParts.push(`🚨 建議<b>立即開啟所有增氧水車</b>，並點選「智慧自動化增氧」套用合理臨界值以節能。`);
+    } else if (doVal < 5.0) {
+        diagnosisParts.push(`⚠️ <b>溶氧量偏低 (${doText} mg/L)</b>：水體含氧量略顯不足，雖無即時生命危險，但會影響生長與進食。`);
+        recParts.push(`💡 建議在氣壓偏低或傍晚時，<b>增開 1~2 台水車</b>以防溶氧崩潰。`);
+    } else {
+        diagnosisParts.push(`✅ <b>溶氧量充足 (${doText} mg/L)</b>：水體氧氣含量優良，有利於多物種混合養殖。`);
+    }
+    
+    // Temperature diagnosis
+    if (temp > 30.0) {
+        diagnosisParts.push(`⚠️ <b>水溫偏高 (${tempText}°C)</b>：高溫會降低氧溶解度，且易加速池底殘餌與糞便腐敗。`);
+        recParts.push(`💡 建議在大熱天<b>適度調降飼料投餵量</b>，並在中午時段運轉水車促進表底層水體對流降溫。`);
+    } else if (temp < 20.0) {
+        diagnosisParts.push(`⚠️ <b>水溫偏低 (${tempText}°C)</b>：低溫使魚蝦等變溫生物消化代謝變慢。`);
+        recParts.push(`💡 建議在冷天<b>減少投餌頻率與份量</b>，避免殘餌污染底質。`);
+    } else {
+        diagnosisParts.push(`✅ <b>水溫合適 (${tempText}°C)</b>：目前處於溫和且適合生物生長的溫度區間。`);
+    }
+    
+    // pH diagnosis
+    if (ph < 6.5) {
+        diagnosisParts.push(`⚠️ <b>酸鹼 pH 值偏酸 (${phText})</b>：水質酸化會損害蝦蟹的外殼鈣化過程，並降低對病菌的抵抗力。`);
+        recParts.push(`💡 建議適度換水，或以適量石灰、水質改良劑逐步調節酸鹼度。`);
+    } else if (ph > 8.5) {
+        diagnosisParts.push(`⚠️ <b>酸鹼 pH 值偏鹼 (${phText})</b>：水質過鹼會增加游離氨（分子氨）的毒性，可能損傷鰓部。`);
+        recParts.push(`💡 建議加強注水淡化，並加強巡檢水色，防範藻類過度繁衍引起 pH 劇烈震盪。`);
+    } else {
+        diagnosisParts.push(`✅ <b>酸鹼 pH 值正常 (${phText})</b>：水質酸鹼度非常平衡。`);
+    }
+    
+    // Level diagnosis
+    if (level < 1.0) {
+        diagnosisParts.push(`⚠️ <b>水位偏低 (${levelText}m)</b>：池體水位過淺，池水保溫能力弱，易因氣溫變化引發溫度劇烈震盪。`);
+        recParts.push(`💡 建議點選「實體感測器」或連動注水閥進行補水，維持池水深度在 1.2m 以上。`);
+    } else if (level > 2.5) {
+        diagnosisParts.push(`⚠️ <b>水位偏高 (${levelText}m)</b>：防汛餘裕降低，注意強降雨時的池水溢堤與潰池風險。`);
+    } else {
+        diagnosisParts.push(`✅ <b>池水位穩定 (${levelText}m)</b>：水位高度合宜。`);
+    }
+    
+    // Join messages
+    const scanDiagnosis = document.getElementById('scan-diagnosis');
+    if (scanDiagnosis) {
+        scanDiagnosis.innerHTML = diagnosisParts.join('<br><br>');
+    }
+    
+    const scanRecommendation = document.getElementById('scan-recommendation');
+    if (scanRecommendation) {
+        if (recParts.length === 0) {
+            scanRecommendation.innerHTML = `✅ 目前各項指標皆正常。建議：<br>1. 維持目前定時定量投餵計畫。<br>2. 保持智慧溶氧自動化迴路在「開啟」狀態，以應對夜間突發氣候變化。`;
+        } else {
+            scanRecommendation.innerHTML = recParts.join('<br><br>');
+        }
+    }
+}
+
