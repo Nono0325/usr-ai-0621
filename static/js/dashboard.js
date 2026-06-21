@@ -5,7 +5,7 @@ let currentDays = 7;
 let chartInstance = null;
 let chatHistory = [];
 let wheelSpinningSpeedFactor = 0.0;
-let currentCreatureType = 'fish';
+let activeCreatures = { fish: true, shrimp: false, crab: false };
 
 // Three.js 3D Scene variables
 let scene, camera, renderer;
@@ -80,14 +80,21 @@ function setupEventListeners() {
         });
     });
 
-    // Creature Selector dropdown handler
-    const creatureSelect = document.getElementById('creature-select');
-    if (creatureSelect) {
-        creatureSelect.addEventListener('change', (e) => {
-            currentCreatureType = e.target.value;
-            spawnCreatures(currentCreatureType);
-        });
-    }
+    // Creature Selector checkbox handlers
+    const fishCb = document.getElementById('creature-fish-cb');
+    const shrimpCb = document.getElementById('creature-shrimp-cb');
+    const crabCb = document.getElementById('creature-crab-cb');
+    
+    const onCbChange = () => {
+        activeCreatures.fish = fishCb ? fishCb.checked : false;
+        activeCreatures.shrimp = shrimpCb ? shrimpCb.checked : false;
+        activeCreatures.crab = crabCb ? crabCb.checked : false;
+        spawnCreatures();
+    };
+    
+    if (fishCb) fishCb.addEventListener('change', onCbChange);
+    if (shrimpCb) shrimpCb.addEventListener('change', onCbChange);
+    if (crabCb) crabCb.addEventListener('change', onCbChange);
 
     // 2. Auto Aeration Configuration Button
     const saveAutoBtn = document.getElementById('save-auto-aeration-btn');
@@ -524,8 +531,8 @@ function initThreeJS() {
     fishGroup = new THREE.Group();
     scene.add(fishGroup);
 
-    // Spawn selected creature type
-    spawnCreatures(currentCreatureType);
+    // Spawn selected creatures
+    spawnCreatures();
 
     // Build Particle Bubble System
     const bubbleGeo = new THREE.BufferGeometry();
@@ -783,7 +790,7 @@ function createRealisticCrab() {
     return crab;
 }
 
-function spawnCreatures(type) {
+function spawnCreatures() {
     if (!fishGroup || !scene) return;
     
     // Clear existing objects
@@ -791,38 +798,48 @@ function spawnCreatures(type) {
         fishGroup.remove(fishGroup.children[0]);
     }
     
-    const count = type === 'crab' ? 5 : 6; // slightly fewer crabs since they are complex
+    // Determine active types
+    const types = [];
+    if (activeCreatures.fish) types.push('fish');
+    if (activeCreatures.shrimp) types.push('shrimp');
+    if (activeCreatures.crab) types.push('crab');
     
-    for (let i = 0; i < count; i++) {
-        let creature;
-        const radius = 1.8 + Math.random() * 2.2;
-        const angle = Math.random() * Math.PI * 2;
-        
-        let yLevel = -0.3 - Math.random() * 0.4; // default fish depth
-        
-        if (type === 'fish') {
-            creature = createRealisticFish();
-        } else if (type === 'shrimp') {
-            creature = createRealisticShrimp();
-            yLevel = -0.5 - Math.random() * 0.4;
-        } else if (type === 'crab') {
-            creature = createRealisticCrab();
-            yLevel = -1.15; // Bottom floor of pond
+    if (types.length === 0) return; // No creatures selected
+    
+    const countPerType = 4;
+    
+    types.forEach(type => {
+        for (let i = 0; i < countPerType; i++) {
+            let creature;
+            const radius = 1.8 + Math.random() * 2.2;
+            const angle = Math.random() * Math.PI * 2;
+            
+            let yLevel = -0.3 - Math.random() * 0.4; // default fish depth
+            
+            if (type === 'fish') {
+                creature = createRealisticFish();
+            } else if (type === 'shrimp') {
+                creature = createRealisticShrimp();
+                yLevel = -0.5 - Math.random() * 0.4;
+            } else if (type === 'crab') {
+                creature = createRealisticCrab();
+                yLevel = -1.15; // Bottom floor of pond
+            }
+            
+            creature.position.set(Math.cos(angle) * radius, yLevel, Math.sin(angle) * radius);
+            
+            creature.userData = {
+                type: type,
+                radius: radius,
+                angle: angle,
+                baseY: yLevel,
+                speed: (type === 'crab' ? 0.004 : 0.008) + Math.random() * 0.008, // crabs walk slower
+                wiggleSpeed: 8 + Math.random() * 6
+            };
+            
+            fishGroup.add(creature);
         }
-        
-        creature.position.set(Math.cos(angle) * radius, yLevel, Math.sin(angle) * radius);
-        
-        creature.userData = {
-            type: type,
-            radius: radius,
-            angle: angle,
-            baseY: yLevel,
-            speed: (type === 'crab' ? 0.004 : 0.008) + Math.random() * 0.008, // crabs walk slower
-            wiggleSpeed: 8 + Math.random() * 6
-        };
-        
-        fishGroup.add(creature);
-    }
+    });
 }
 
 // 3D Scene Animation Loop
