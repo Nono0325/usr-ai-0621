@@ -4,6 +4,7 @@ let currentSensorType = 'temperature';
 let currentDays = 7;
 let chartInstance = null;
 let chatHistory = [];
+let wheelSpinningSpeedFactor = 0.0;
 
 // Three.js 3D Scene variables
 let scene, camera, renderer;
@@ -192,6 +193,9 @@ function updateWaterWheelUI(active) {
             cardIndicator.innerHTML = '<i class="fas fa-power-off"></i> 水車: 停止';
         }
     }
+    
+    // Load water wheels to calculate active ratio and update UI
+    loadWaterWheels(activePondId);
 }
 
 // API Call: Control Water Wheel status
@@ -586,8 +590,8 @@ function animate() {
     }
 
     // 2. Water Wheel Spinning
-    if (isWheelSpinning && waterWheelMesh) {
-        waterWheelMesh.rotation.z -= 0.06; // Rotate backwards to simulate paddle speed
+    if (wheelSpinningSpeedFactor > 0 && waterWheelMesh) {
+        waterWheelMesh.rotation.z -= 0.06 * wheelSpinningSpeedFactor; // Scale speed by active wheels ratio
     }
 
     // 3. Fish Swimming
@@ -615,11 +619,11 @@ function animate() {
         const speeds = bubbleSystem.userData.speeds;
         
         for (let i = 0; i < bubbleSystem.userData.count; i++) {
-            if (isWheelSpinning) {
-                // Rising active simulation
-                posAttr.array[i*3] += speeds[i].x;
-                posAttr.array[i*3+1] += speeds[i].y;
-                posAttr.array[i*3+2] += speeds[i].z;
+            if (wheelSpinningSpeedFactor > 0) {
+                // Rising active simulation scaled by speed factor
+                posAttr.array[i*3] += speeds[i].x * wheelSpinningSpeedFactor;
+                posAttr.array[i*3+1] += speeds[i].y * wheelSpinningSpeedFactor;
+                posAttr.array[i*3+2] += speeds[i].z * wheelSpinningSpeedFactor;
                 
                 // If bubbles rise above water level or disperse too far
                 if (posAttr.array[i*3+1] > 0.4 || posAttr.array[i*3] < 0) {
@@ -1018,7 +1022,24 @@ function loadWaterWheels(pondId) {
             
             container.innerHTML = '';
             
-            if (data.wheels.length === 0) {
+            const totalWheels = data.wheels.length;
+            const activeWheels = data.wheels.filter(w => w.status === 'on').length;
+            wheelSpinningSpeedFactor = totalWheels > 0 ? (activeWheels / totalWheels) : 0.0;
+            isWheelSpinning = activeWheels > 0;
+            
+            const ratioEl = document.getElementById('wheels-active-ratio');
+            if (ratioEl) {
+                if (totalWheels === 0) {
+                    ratioEl.textContent = '無水車';
+                } else {
+                    const percentage = Math.round(wheelSpinningSpeedFactor * 100);
+                    ratioEl.textContent = `運轉率: ${percentage}%`;
+                }
+            }
+            
+            updateLegacyPondCardWheelUI(pondId, isWheelSpinning);
+            
+            if (totalWheels === 0) {
                 container.innerHTML = `<span style="font-size:12.5px; color:var(--text-muted);">本池目前無增氧水車。</span>`;
                 return;
             }
