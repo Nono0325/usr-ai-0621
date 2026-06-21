@@ -479,14 +479,14 @@ function initThreeJS() {
     if (!container) return;
 
     const width = container.clientWidth;
-    const height = container.clientHeight;
+    const height = window.innerWidth <= 768 ? 320 : container.clientHeight;
     
     // Window resize event handler to dynamically resize Three.js canvas
     window.addEventListener('resize', () => {
         const wrapper = document.getElementById('canvas-wrapper');
         if (wrapper && camera && renderer) {
             const w = wrapper.clientWidth;
-            const h = wrapper.clientHeight;
+            const h = window.innerWidth <= 768 ? 320 : wrapper.clientHeight;
             camera.aspect = w / h;
             camera.updateProjectionMatrix();
             renderer.setSize(w, h);

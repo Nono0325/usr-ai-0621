@@ -135,12 +135,14 @@ header {
     display: flex;
     flex-direction: column;
     gap: 24px;
+    min-width: 0;
 }
 
 .main-content {
     display: flex;
     flex-direction: column;
     gap: 24px;
+    min-width: 0;
 }
 
 /* Section Titles */
@@ -294,7 +296,7 @@ header {
 }
 
 #three-canvas {
-    width: 100%;
+    width: 100% !important;
     height: 100%;
     display: block;
 }
@@ -778,10 +780,14 @@ table.data-table tbody tr:hover {
 }
 
 .modal-box {
-    width: 450px;
+    width: calc(100% - 32px);
+    max-width: 450px;
     padding: 24px;
     transform: scale(0.9);
     transition: transform 0.3s;
+    max-height: 90vh;
+    display: flex;
+    flex-direction: column;
 }
 
 .modal-backdrop.open .modal-box {
@@ -807,6 +813,9 @@ table.data-table tbody tr:hover {
     display: flex;
     flex-direction: column;
     gap: 16px;
+    flex: 1;
+    overflow-y: auto;
+    padding-right: 6px;
 }
 
 .form-group {
@@ -964,9 +973,11 @@ table.data-table tbody tr:hover {
         display: flex;
         flex-direction: column;
         position: relative;
+        min-width: 0;
     }
     
     #three-canvas {
+        width: 100% !important;
         height: 320px !important;
     }
 
