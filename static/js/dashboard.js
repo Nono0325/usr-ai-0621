@@ -475,11 +475,23 @@ function updateChartData(labels, data, type) {
 
 // Three.js 3D Pond Setup
 function initThreeJS() {
-    const container = document.getElementById('three-container');
+    const container = document.getElementById('canvas-wrapper');
     if (!container) return;
 
     const width = container.clientWidth;
     const height = container.clientHeight;
+    
+    // Window resize event handler to dynamically resize Three.js canvas
+    window.addEventListener('resize', () => {
+        const wrapper = document.getElementById('canvas-wrapper');
+        if (wrapper && camera && renderer) {
+            const w = wrapper.clientWidth;
+            const h = wrapper.clientHeight;
+            camera.aspect = w / h;
+            camera.updateProjectionMatrix();
+            renderer.setSize(w, h);
+        }
+    });
 
     // Create Scene
     scene = new THREE.Scene();

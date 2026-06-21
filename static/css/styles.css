@@ -891,3 +891,118 @@ table.data-table tbody tr:hover {
     font-size: 14px;
 }
 
+/* --- Responsive Grid & Overlay Wrapper Styles --- */
+
+.visualizer-telemetry-wrapper {
+    display: grid;
+    grid-template-columns: 1.2fr 1fr;
+    gap: 24px;
+    align-items: stretch;
+    margin-bottom: 24px;
+}
+
+.creature-selector-overlay {
+    position: absolute;
+    top: 20px;
+    right: 20px;
+    z-index: 10;
+    display: flex;
+    gap: 14px;
+    background: rgba(18, 24, 35, 0.85);
+    backdrop-filter: blur(12px);
+    border: 1px solid var(--border-color);
+    padding: 8px 16px;
+    border-radius: 12px;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+}
+
+.weather-feed-overlay {
+    position: absolute;
+    bottom: 20px;
+    left: 20px;
+    z-index: 10;
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+/* Media Queries for Devices */
+@media (max-width: 1200px) {
+    .visualizer-telemetry-wrapper {
+        grid-template-columns: 1fr;
+    }
+}
+
+@media (max-width: 768px) {
+    .dashboard-container {
+        padding: 12px;
+    }
+    
+    header {
+        flex-direction: column;
+        gap: 14px;
+        align-items: flex-start;
+        padding: 15px 20px;
+    }
+    
+    .visualizer-container {
+        display: flex;
+        flex-direction: column;
+        height: auto;
+        padding-bottom: 16px;
+    }
+    
+    #canvas-wrapper {
+        height: 350px !important;
+    }
+    
+    .creature-selector-overlay {
+        position: static;
+        margin: 14px;
+        justify-content: center;
+    }
+    
+    .weather-feed-overlay {
+        position: static;
+        margin: 14px;
+        justify-content: center;
+        gap: 8px;
+    }
+    
+    .visualizer-actions {
+        position: static;
+        margin: 14px;
+        justify-content: center;
+        gap: 12px;
+        margin-bottom: 8px;
+    }
+    
+    .stats-grid {
+        grid-template-columns: 1fr;
+        gap: 10px;
+    }
+    
+    .filter-bar {
+        flex-direction: column;
+        align-items: stretch;
+    }
+    
+    .filter-group {
+        width: 100%;
+    }
+    
+    .filter-control {
+        width: 100%;
+    }
+}
+
+@media (max-width: 480px) {
+    .chat-drawer {
+        width: calc(100vw - 30px);
+        right: 15px;
+        left: 15px;
+        bottom: 90px;
+        height: 480px;
+    }
+}
+

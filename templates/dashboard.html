@@ -73,61 +73,65 @@
         <div class="main-content">
             
             <!-- 3D Viewer & Instant Telemetry -->
-            <div style="display: grid; grid-template-columns: 1.2fr 1fr; gap: 24px; align-items: stretch; margin-bottom: 24px;">
+            <div class="visualizer-telemetry-wrapper">
                 
                 <!-- 3D Render Panel -->
-                <div class="glass-panel visualizer-container" id="three-container">
-                    <canvas id="three-canvas"></canvas>
-                    
-                    <!-- Scan HUD Overlay -->
-                    <div id="scan-hud" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 255, 136, 0.03); border: 2px solid rgba(0, 255, 136, 0.2); border-radius: 16px; pointer-events: none; display: none; z-index: 12; align-items: center; justify-content: center; flex-direction: column;">
-                        <div style="font-size: 24px; font-weight: bold; color: #00ff88; text-shadow: 0 0 10px rgba(0,255,136,0.5); letter-spacing: 2px;">AI 智慧掃描中...</div>
-                        <div style="width: 200px; height: 6px; background: rgba(255,255,255,0.1); border-radius: 3px; margin-top: 15px; overflow: hidden; position: relative;">
-                            <div id="scan-progress-bar" style="position: absolute; left: 0; top: 0; height: 100%; width: 0%; background: #00ff88; box-shadow: 0 0 8px #00ff88; transition: width 0.1s linear;"></div>
+                <div class="glass-panel visualizer-container" id="three-container" style="display: flex; flex-direction: column; overflow: hidden; height: auto;">
+                    <div style="position: relative; width: 100%; height: 480px; flex-shrink: 0;" id="canvas-wrapper">
+                        <canvas id="three-canvas" style="width: 100%; height: 100%; display: block;"></canvas>
+                        
+                        <!-- Scan HUD Overlay -->
+                        <div id="scan-hud" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 255, 136, 0.03); border: 2px solid rgba(0, 255, 136, 0.2); border-radius: 16px; pointer-events: none; display: none; z-index: 12; align-items: center; justify-content: center; flex-direction: column;">
+                            <div style="font-size: 24px; font-weight: bold; color: #00ff88; text-shadow: 0 0 10px rgba(0,255,136,0.5); letter-spacing: 2px;">AI 智慧掃描中...</div>
+                            <div style="width: 200px; height: 6px; background: rgba(255,255,255,0.1); border-radius: 3px; margin-top: 15px; overflow: hidden; position: relative;">
+                                <div id="scan-progress-bar" style="position: absolute; left: 0; top: 0; height: 100%; width: 0%; background: #00ff88; box-shadow: 0 0 8px #00ff88; transition: width 0.1s linear;"></div>
+                            </div>
+                            <div id="scan-progress-text" style="color: rgba(255,255,255,0.7); font-size: 12px; margin-top: 8px; font-family: monospace;">0%</div>
                         </div>
-                        <div id="scan-progress-text" style="color: rgba(255,255,255,0.7); font-size: 12px; margin-top: 8px; font-family: monospace;">0%</div>
+
+                        <div class="visualizer-overlay" style="position: absolute; top: 20px; left: 20px; pointer-events: none; z-index: 10;">
+                            <div class="visualizer-title" id="pond-title-3d">
+                                {% if ponds.0 %}{{ ponds.0.name }}{% else %}未選取魚池{% endif %}
+                            </div>
+                            <div style="font-size: 13px; color: var(--text-secondary); margin-top: 4px;">
+                                <i class="fas fa-cube"></i> 3D 模擬即時監控中
+                            </div>
+                        </div>
+                        
+                        <!-- Dynamic Creature Selectors (Checkboxes for Multi-Selection) -->
+                        <div class="creature-selector-overlay">
+                            <label style="display: flex; align-items: center; gap: 6px; font-size: 12.5px; color: #fff; cursor: pointer; user-select: none; font-weight: 500;">
+                                <input type="checkbox" id="creature-fish-cb" checked style="width: 14px; height: 14px; accent-color: var(--color-primary); cursor: pointer;"> 🐟 魚類
+                            </label>
+                            <label style="display: flex; align-items: center; gap: 6px; font-size: 12.5px; color: #fff; cursor: pointer; user-select: none; font-weight: 500;">
+                                <input type="checkbox" id="creature-shrimp-cb" style="width: 14px; height: 14px; accent-color: var(--color-primary); cursor: pointer;"> 🦐 蝦類
+                            </label>
+                            <label style="display: flex; align-items: center; gap: 6px; font-size: 12.5px; color: #fff; cursor: pointer; user-select: none; font-weight: 500;">
+                                <input type="checkbox" id="creature-crab-cb" style="width: 14px; height: 14px; accent-color: var(--color-primary); cursor: pointer;"> 🦀 螃蟹
+                            </label>
+                        </div>
+                        
+                        <!-- Dynamic Weather and Feed controls -->
+                        <div class="weather-feed-overlay">
+                            <button class="ar-btn" id="weather-day-btn" style="background: rgba(0, 242, 254, 0.15); border-color: rgba(0, 242, 254, 0.3); color: #fff; padding: 6px 12px; font-size: 12.5px; border-radius: 20px;">
+                                <i class="fas fa-sun" style="color: #ffaa00;"></i> 白天
+                            </button>
+                            <button class="ar-btn" id="weather-night-btn" style="background: rgba(255, 255, 255, 0.05); border-color: rgba(255, 255, 255, 0.1); color: var(--text-secondary); padding: 6px 12px; font-size: 12.5px; border-radius: 20px;">
+                                <i class="fas fa-moon" style="color: #4facfe;"></i> 黑夜
+                            </button>
+                            <button class="ar-btn" id="weather-rain-btn" style="background: rgba(255, 255, 255, 0.05); border-color: rgba(255, 255, 255, 0.1); color: var(--text-secondary); padding: 6px 12px; font-size: 12.5px; border-radius: 20px;">
+                                <i class="fas fa-cloud-showers-heavy" style="color: #a18cd1;"></i> 雨天
+                            </button>
+                            <button class="ar-btn" id="feed-fish-btn" style="background: rgba(255, 159, 67, 0.15); border-color: rgba(255, 159, 67, 0.3); color: var(--color-warning); padding: 6px 12px; font-size: 12.5px; border-radius: 20px;">
+                                <i class="fas fa-cookie"></i> 投餵飼料
+                            </button>
+                            <button class="ar-btn" id="ai-scan-btn" style="background: rgba(46, 213, 115, 0.15); border-color: rgba(46, 213, 115, 0.3); color: #2ed573; padding: 6px 12px; font-size: 12.5px; border-radius: 20px;">
+                                <i class="fas fa-robot"></i> AI 智慧掃描
+                            </button>
+                        </div>
                     </div>
 
-                    <div class="visualizer-overlay">
-                        <div class="visualizer-title" id="pond-title-3d">
-                            {% if ponds.0 %}{{ ponds.0.name }}{% else %}未選取魚池{% endif %}
-                        </div>
-                        <div style="font-size: 13px; color: var(--text-secondary); margin-top: 4px;">
-                            <i class="fas fa-cube"></i> 3D 模擬即時監控中
-                        </div>
-                    </div>
-                    <!-- Dynamic Creature Selectors (Checkboxes for Multi-Selection) -->
-                    <div style="position: absolute; top: 20px; right: 20px; z-index: 10; display: flex; gap: 14px; background: rgba(18, 24, 35, 0.85); backdrop-filter: blur(12px); border: 1px solid var(--border-color); padding: 8px 16px; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.3);">
-                        <label style="display: flex; align-items: center; gap: 6px; font-size: 12.5px; color: #fff; cursor: pointer; user-select: none; font-weight: 500;">
-                            <input type="checkbox" id="creature-fish-cb" checked style="width: 14px; height: 14px; accent-color: var(--color-primary); cursor: pointer;"> 🐟 魚類
-                        </label>
-                        <label style="display: flex; align-items: center; gap: 6px; font-size: 12.5px; color: #fff; cursor: pointer; user-select: none; font-weight: 500;">
-                            <input type="checkbox" id="creature-shrimp-cb" style="width: 14px; height: 14px; accent-color: var(--color-primary); cursor: pointer;"> 🦐 蝦類
-                        </label>
-                        <label style="display: flex; align-items: center; gap: 6px; font-size: 12.5px; color: #fff; cursor: pointer; user-select: none; font-weight: 500;">
-                            <input type="checkbox" id="creature-crab-cb" style="width: 14px; height: 14px; accent-color: var(--color-primary); cursor: pointer;"> 🦀 螃蟹
-                        </label>
-                    </div>
-                    <!-- Dynamic Weather and Feed controls -->
-                    <div style="position: absolute; bottom: 20px; left: 20px; z-index: 10; display: flex; gap: 8px;">
-                        <button class="ar-btn" id="weather-day-btn" style="background: rgba(0, 242, 254, 0.15); border-color: rgba(0, 242, 254, 0.3); color: #fff; padding: 6px 12px; font-size: 12.5px; border-radius: 20px;">
-                            <i class="fas fa-sun" style="color: #ffaa00;"></i> 白天
-                        </button>
-                        <button class="ar-btn" id="weather-night-btn" style="background: rgba(255, 255, 255, 0.05); border-color: rgba(255, 255, 255, 0.1); color: var(--text-secondary); padding: 6px 12px; font-size: 12.5px; border-radius: 20px;">
-                            <i class="fas fa-moon" style="color: #4facfe;"></i> 黑夜
-                        </button>
-                        <button class="ar-btn" id="weather-rain-btn" style="background: rgba(255, 255, 255, 0.05); border-color: rgba(255, 255, 255, 0.1); color: var(--text-secondary); padding: 6px 12px; font-size: 12.5px; border-radius: 20px;">
-                            <i class="fas fa-cloud-showers-heavy" style="color: #a18cd1;"></i> 雨天
-                        </button>
-                        <button class="ar-btn" id="feed-fish-btn" style="background: rgba(255, 159, 67, 0.15); border-color: rgba(255, 159, 67, 0.3); color: var(--color-warning); padding: 6px 12px; font-size: 12.5px; border-radius: 20px;">
-                            <i class="fas fa-cookie"></i> 投餵飼料
-                        </button>
-                        <button class="ar-btn" id="ai-scan-btn" style="background: rgba(46, 213, 115, 0.15); border-color: rgba(46, 213, 115, 0.3); color: #2ed573; padding: 6px 12px; font-size: 12.5px; border-radius: 20px;">
-                            <i class="fas fa-robot"></i> AI 智慧掃描
-                        </button>
-                    </div>
-
-                    <div class="visualizer-actions">
+                    <div class="visualizer-actions" style="position: absolute; bottom: 20px; right: 20px; z-index: 10;">
                         <button class="ar-btn" id="iot-mode-btn" style="background: rgba(0, 242, 254, 0.15); border-color: rgba(0, 242, 254, 0.3);">
                             <i class="fas fa-wifi"></i> 實體感測器串接
                         </button>
