@@ -12,6 +12,11 @@ let rainSystem = null;
 let isScanning = false;
 let scanMesh = null;
 let scanProgress = 0;
+let autoFeederIntervalId = null;
+let feederCapacity = 100;
+let feederIntervalSeconds = 15;
+let feederTimeLeft = 15;
+let feederLightMat = null;
 
 // Three.js 3D Scene variables
 let scene, camera, renderer;
@@ -141,6 +146,21 @@ function setupEventListeners() {
     }
     if (closeScanX && scanModal) {
         closeScanX.addEventListener('click', () => scanModal.classList.remove('open'));
+    }
+
+    // Automatic Feeder Event Listeners
+    const feederSwitch = document.getElementById('auto-feeder-switch');
+    const saveFeederBtn = document.getElementById('save-feeder-btn');
+    const refillFeederBtn = document.getElementById('refill-feeder-btn');
+    
+    if (feederSwitch) {
+        feederSwitch.addEventListener('change', () => toggleAutoFeeder(feederSwitch.checked));
+    }
+    if (saveFeederBtn) {
+        saveFeederBtn.addEventListener('click', () => applyFeederInterval());
+    }
+    if (refillFeederBtn) {
+        refillFeederBtn.addEventListener('click', () => refillFeeder());
     }
 
     // 2. Auto Aeration Configuration Button
@@ -573,6 +593,41 @@ function initThreeJS() {
     wheelGroup.add(p2);
 
     scene.add(wheelGroup);
+
+    // Build 3D Automatic Feeder Model
+    const feederGroup = new THREE.Group();
+    feederGroup.position.set(-3.8, 0.25, 0); // Position on the opposite side of the water wheel
+    
+    // Pillar stand support
+    const standGeo = new THREE.CylinderGeometry(0.08, 0.08, 1.4, 8);
+    const standMat = new THREE.MeshStandardMaterial({ color: 0x5a6e85, metalness: 0.5, roughness: 0.3 });
+    const stand = new THREE.Mesh(standGeo, standMat);
+    stand.position.y = -0.6;
+    feederGroup.add(stand);
+    
+    // Feeder Main tank box
+    const tankGeo = new THREE.BoxGeometry(0.5, 0.6, 0.5);
+    const tankMat = new THREE.MeshStandardMaterial({ color: 0x223047, metalness: 0.7, roughness: 0.2 });
+    const tank = new THREE.Mesh(tankGeo, tankMat);
+    tank.position.y = 0.3;
+    feederGroup.add(tank);
+    
+    // Feeder indicator light
+    const lightGeo = new THREE.SphereGeometry(0.04, 8, 8);
+    feederLightMat = new THREE.MeshBasicMaterial({ color: 0xff4d4d }); // default off/red
+    const indicatorLight = new THREE.Mesh(lightGeo, feederLightMat);
+    indicatorLight.position.set(0, 0.3, 0.26); // front face of the tank box
+    feederGroup.add(indicatorLight);
+    
+    // Delivery spout/pipe
+    const spoutGeo = new THREE.CylinderGeometry(0.035, 0.035, 0.5, 8);
+    spoutGeo.rotateX(Math.PI / 4); // slope downward
+    const spoutMat = new THREE.MeshStandardMaterial({ color: 0x4a5d73, metalness: 0.6 });
+    const spout = new THREE.Mesh(spoutGeo, spoutMat);
+    spout.position.set(0.18, 0.1, 0);
+    feederGroup.add(spout);
+    
+    scene.add(feederGroup);
 
     // Build Floating creatures
     fishGroup = new THREE.Group();
@@ -1110,7 +1165,13 @@ function animate() {
     if (feedParticles.length > 0) {
         feedParticles.forEach(pellet => {
             if (!pellet.isSinking) {
-                pellet.mesh.position.y -= pellet.speedY;
+                if (pellet.fromFeeder) {
+                    pellet.mesh.position.x += pellet.speedX;
+                    pellet.mesh.position.y -= pellet.speedY;
+                    pellet.speedY += 0.003; // gravity acceleration
+                } else {
+                    pellet.mesh.position.y -= pellet.speedY;
+                }
                 if (pellet.mesh.position.y <= 0.05) {
                     pellet.isSinking = true;
                 }
@@ -2057,6 +2118,209 @@ function generateAIScanReport() {
         } else {
             scanRecommendation.innerHTML = recParts.join('<br><br>');
         }
+    }
+}
+
+// --- Automatic Feeder Control Functions ---
+
+function toggleAutoFeeder(enabled) {
+    const badge = document.getElementById('feeder-status-badge');
+    
+    // Clear existing timer if active
+    if (autoFeederIntervalId) {
+        clearInterval(autoFeederIntervalId);
+        autoFeederIntervalId = null;
+    }
+    
+    if (enabled) {
+        // Update UI
+        if (badge) {
+            badge.textContent = '自動中';
+            badge.style.background = 'rgba(46, 213, 115, 0.15)';
+            badge.style.borderColor = 'rgba(46, 213, 115, 0.3)';
+            badge.style.color = '#2ed573';
+        }
+        
+        // Update indicator light to green
+        if (feederLightMat) {
+            feederLightMat.color.setHex(0x00ff88);
+        }
+        
+        // Load interval settings
+        const intervalInput = document.getElementById('auto-feeder-interval');
+        if (intervalInput) {
+            feederIntervalSeconds = Math.max(5, parseInt(intervalInput.value) || 15);
+        }
+        feederTimeLeft = feederIntervalSeconds;
+        
+        const countdownText = document.getElementById('feeder-countdown');
+        if (countdownText) countdownText.textContent = feederTimeLeft + ' 秒';
+        
+        // Start second countdown interval
+        autoFeederIntervalId = setInterval(() => {
+            if (feederCapacity <= 0) {
+                if (countdownText) countdownText.textContent = '飼料箱已空！';
+                return;
+            }
+            
+            feederTimeLeft--;
+            if (countdownText) countdownText.textContent = feederTimeLeft + ' 秒';
+            
+            if (feederTimeLeft <= 0) {
+                // Drop feed!
+                feedFromMachine(4);
+                
+                // Record last feeding time
+                const lastTimeText = document.getElementById('feeder-last-time');
+                if (lastTimeText) {
+                    const now = new Date();
+                    lastTimeText.textContent = now.toLocaleTimeString();
+                }
+                
+                // Reduce capacity by 2%
+                feederCapacity = Math.max(0, feederCapacity - 2);
+                updateFeederCapacityUI();
+                
+                // Reset timer
+                feederTimeLeft = feederIntervalSeconds;
+            }
+        }, 1000);
+    } else {
+        // Update UI
+        if (badge) {
+            badge.textContent = '已關閉';
+            badge.style.background = 'rgba(255, 255, 255, 0.05)';
+            badge.style.borderColor = 'rgba(255, 255, 255, 0.1)';
+            badge.style.color = 'var(--text-secondary)';
+        }
+        
+        // Update indicator light to red
+        if (feederLightMat) {
+            feederLightMat.color.setHex(0xff4d4d);
+        }
+        
+        const countdownText = document.getElementById('feeder-countdown');
+        if (countdownText) countdownText.textContent = '--';
+    }
+}
+
+function applyFeederInterval() {
+    const intervalInput = document.getElementById('auto-feeder-interval');
+    if (intervalInput) {
+        const val = parseInt(intervalInput.value);
+        if (isNaN(val) || val < 5 || val > 300) {
+            alert('請輸入 5 到 300 秒之間的有效投餵間隔時間！');
+            return;
+        }
+        feederIntervalSeconds = val;
+        feederTimeLeft = val;
+        
+        // If active, reset current interval timer
+        const autoSwitch = document.getElementById('auto-feeder-switch');
+        if (autoSwitch && autoSwitch.checked) {
+            toggleAutoFeeder(true);
+        }
+        
+        // Custom button text confirmation style
+        const btn = document.getElementById('save-feeder-btn');
+        if (btn) {
+            const origText = btn.textContent;
+            btn.textContent = '已設定';
+            btn.style.background = 'var(--color-success)';
+            setTimeout(() => {
+                btn.textContent = origText;
+                btn.style.background = '';
+            }, 1500);
+        }
+    }
+}
+
+function refillFeeder() {
+    feederCapacity = 100;
+    updateFeederCapacityUI();
+    
+    // Animate button feedback
+    const btn = document.getElementById('refill-feeder-btn');
+    if (btn) {
+        const origHtml = btn.innerHTML;
+        btn.innerHTML = '<i class="fas fa-check"></i> 已補充';
+        btn.style.background = 'rgba(46, 213, 115, 0.15)';
+        btn.style.borderColor = 'rgba(46, 213, 115, 0.3)';
+        btn.style.color = '#2ed573';
+        setTimeout(() => {
+            btn.innerHTML = origHtml;
+            btn.style.background = '';
+            btn.style.borderColor = '';
+            btn.style.color = '';
+        }, 1500);
+    }
+}
+
+function updateFeederCapacityUI() {
+    const capText = document.getElementById('feeder-capacity-text');
+    const capBar = document.getElementById('feeder-capacity-bar');
+    
+    if (capText) capText.textContent = feederCapacity + '%';
+    if (capBar) {
+        capBar.style.width = feederCapacity + '%';
+        // Change color based on capacity
+        if (feederCapacity < 20) {
+            capBar.style.background = 'linear-gradient(90deg, #ff4d4d, #ff6b6b)';
+            capBar.style.boxShadow = '0 0 8px rgba(255, 77, 77, 0.5)';
+        } else if (feederCapacity < 50) {
+            capBar.style.background = 'linear-gradient(90deg, #ff9f43, #ffb366)';
+            capBar.style.boxShadow = '0 0 8px rgba(255, 159, 67, 0.5)';
+        } else {
+            capBar.style.background = 'linear-gradient(90deg, #2ed573, #7bed9f)';
+            capBar.style.boxShadow = '0 0 8px rgba(46, 213, 115, 0.5)';
+        }
+    }
+}
+
+function feedFromMachine(count = 4) {
+    if (!scene) return;
+    
+    const geometry = new THREE.SphereGeometry(0.04, 8, 8);
+    const material = new THREE.MeshStandardMaterial({ 
+        color: 0x8d5828, // brown food
+        roughness: 0.8 
+    });
+    
+    // Flash indicator light orange during physical feeding
+    if (feederLightMat) {
+        const prevColor = feederLightMat.color.getHex();
+        feederLightMat.color.setHex(0xffaa00);
+        setTimeout(() => {
+            if (feederLightMat) {
+                feederLightMat.color.setHex(prevColor);
+            }
+        }, 1500);
+    }
+    
+    for (let i = 0; i < count; i++) {
+        const pellet = new THREE.Mesh(geometry, material);
+        pellet.castShadow = true;
+        
+        // Spawns near delivery spout: (-3.6, 0.2, 0)
+        // With a tiny random offset representing feed scattering
+        const x = -3.6 + (Math.random() - 0.5) * 0.2;
+        const y = 0.25 + Math.random() * 0.1;
+        const z = (Math.random() - 0.5) * 0.3;
+        
+        // Feed particles spray forward (toward center +x direction)
+        const speedX = 0.02 + Math.random() * 0.02;
+        
+        pellet.position.set(x, y, z);
+        scene.add(pellet);
+        
+        feedParticles.push({
+            mesh: pellet,
+            speedX: speedX,
+            speedY: -0.015 + Math.random() * 0.01, // small upward bounce then downward fall
+            sinkingSpeed: 0.005 + Math.random() * 0.005,
+            isSinking: false,
+            fromFeeder: true
+        });
     }
 }
 

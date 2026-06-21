@@ -215,6 +215,64 @@
                             </div>
                         </div>
                     </div>
+
+                    <!-- Automatic Feeder Control Panel -->
+                    <div class="glass-panel" style="padding: 20px; display: flex; flex-direction: column; gap: 16px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border-color); padding-bottom: 10px;">
+                            <h3 style="font-size: 15px; display: flex; align-items: center; gap: 8px;"><i class="fas fa-cookie-bite" style="color:var(--color-warning)"></i> 智慧自動投餵系統</h3>
+                            <span id="feeder-status-badge" style="font-size: 11.5px; color: var(--text-secondary); padding: 2px 8px; background: rgba(255, 255, 255, 0.05); border-radius: 20px; border: 1px solid rgba(255, 255, 255, 0.1);">已關閉</span>
+                        </div>
+                        
+                        <!-- Automatic controls -->
+                        <div style="display: flex; flex-direction: column; gap: 12px;">
+                            <div style="display: flex; justify-content: space-between; align-items: center;">
+                                <div>
+                                    <h4 style="font-size: 13.5px; color: #fff; margin: 0;">啟用自動投餵排程</h4>
+                                    <span style="font-size: 11.5px; color: var(--text-secondary);">開啟後，將定時自動灑料投餵</span>
+                                </div>
+                                <label class="switch">
+                                    <input type="checkbox" id="auto-feeder-switch">
+                                    <span class="slider"></span>
+                                </label>
+                            </div>
+                            
+                            <!-- Timer setting -->
+                            <div id="feeder-timer-container" style="display: flex; justify-content: space-between; align-items: center; margin-top: 4px;">
+                                <span style="font-size: 12.5px; color: var(--text-secondary);">投餵間隔時間：</span>
+                                <div style="display: flex; align-items: center; gap: 8px;">
+                                    <input type="number" id="auto-feeder-interval" min="5" max="300" style="width: 60px; background: rgba(0,0,0,0.3); border: 1px solid var(--border-color); color: #fff; padding: 4px 8px; border-radius: 6px; text-align: center; font-size: 12.5px;" value="15">
+                                    <span style="font-size: 12.5px; color: var(--text-secondary);">秒</span>
+                                    <button class="btn-primary" id="save-feeder-btn" style="padding: 4px 8px; font-size: 11.5px; border-radius: 6px;">設定</button>
+                                </div>
+                            </div>
+                            
+                            <!-- Feeder Tank Capacity -->
+                            <div style="display: flex; flex-direction: column; gap: 6px; margin-top: 6px; border-top: 1px dashed var(--border-color); padding-top: 12px;">
+                                <div style="display: flex; justify-content: space-between; align-items: center; font-size: 12.5px;">
+                                    <span style="color: var(--text-secondary);">飼料罐存量：</span>
+                                    <span id="feeder-capacity-text" style="color: #fff; font-weight: bold;">100%</span>
+                                </div>
+                                <div style="width: 100%; height: 8px; background: rgba(255,255,255,0.08); border-radius: 4px; overflow: hidden; position: relative;">
+                                    <div id="feeder-capacity-bar" style="position: absolute; left: 0; top: 0; height: 100%; width: 100%; background: linear-gradient(90deg, #ff9f43, #ffb366); box-shadow: 0 0 8px rgba(255, 159, 67, 0.5); transition: width 0.3s ease;"></div>
+                                </div>
+                                <div style="display: flex; justify-content: flex-end; margin-top: 4px;">
+                                    <button class="btn-secondary" id="refill-feeder-btn" style="padding: 3px 10px; font-size: 11px; border-radius: 6px;"><i class="fas fa-fill-drip"></i> 補充飼料</button>
+                                </div>
+                            </div>
+
+                            <!-- Feeder Telemetry logs -->
+                            <div style="display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--text-secondary); background: rgba(0,0,0,0.2); padding: 8px 12px; border-radius: 8px; margin-top: 4px;">
+                                <div style="display: flex; justify-content: space-between;">
+                                    <span>上次投餵時間：</span>
+                                    <span id="feeder-last-time" style="color: #fff; font-family: monospace;">尚未投餵</span>
+                                </div>
+                                <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 2px;">
+                                    <span>下次投餵倒數：</span>
+                                    <span id="feeder-countdown" style="color: var(--color-warning); font-family: monospace; font-weight: bold;">--</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
                 </div>
 
             </div>
