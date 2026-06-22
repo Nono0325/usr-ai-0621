@@ -723,5 +723,5 @@ void loop() {
 </div>
 
 <!-- Load dashboard javascript -->
-<script src="{% static 'js/dashboard.js' %}"></script>
+<script src="{% static 'js/dashboard.js' %}?v={% now 'U' %}"></script>
 {% endblock %}

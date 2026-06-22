@@ -271,9 +271,12 @@ def pond_detail_api(request, pond_id):
             return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
             
     elif request.method == 'DELETE':
-        pond_name = pond.name
-        pond.delete()
-        return JsonResponse({'status': 'success', 'message': f"Pond '{pond_name}' was successfully deleted."})
+        try:
+            pond_name = pond.name
+            pond.delete()
+            return JsonResponse({'status': 'success', 'message': f"Pond '{pond_name}' was successfully deleted."})
+        except Exception as e:
+            return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
 
 # --- Sensor CRUD APIs ---
 @csrf_exempt
