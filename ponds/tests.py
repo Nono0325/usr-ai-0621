@@ -41,10 +41,10 @@ class AquacultureTestCase(TestCase):
         post_data = json.loads(post_response.content)
         self.assertEqual(post_data['status'], 'success')
         
-        # Verify default sensors were created
+        # Verify default sensors were created (including light and rain)
         new_pond_id = post_data['pond']['id']
         sensors_count = Sensor.objects.filter(pond_id=new_pond_id).count()
-        self.assertEqual(sensors_count, 4)
+        self.assertEqual(sensors_count, 6)
 
     def test_historical_data_api(self):
         url = f"{reverse('historical_data_api')}?pond_id={self.pond.id}&sensor_type=temperature&days=7"
@@ -73,3 +73,20 @@ class AquacultureTestCase(TestCase):
         
         # Verify it was added to database
         self.assertEqual(SensorReading.objects.filter(sensor__sensor_type='ph').count(), 1)
+
+    def test_sensor_deletion_api(self):
+        # Create an extra sensor to delete
+        extra_sensor = Sensor.objects.create(pond=self.pond, name="EXTRA-TEMP", sensor_type="temperature", status="active")
+        sensor_id = extra_sensor.id
+        
+        # Verify it exists
+        self.assertTrue(Sensor.objects.filter(id=sensor_id).exists())
+        
+        # Delete via API
+        response = self.client.delete(reverse('sensor_detail_api', kwargs={'sensor_id': sensor_id}))
+        self.assertEqual(response.status_code, 200)
+        data = json.loads(response.content)
+        self.assertEqual(data['status'], 'success')
+        
+        # Verify it is deleted from database
+        self.assertFalse(Sensor.objects.filter(id=sensor_id).exists())
