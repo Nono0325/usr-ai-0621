@@ -19,6 +19,8 @@ class Sensor(models.Model):
         ('ph', 'pH Level'),
         ('dissolved_oxygen', 'Dissolved Oxygen (mg/L)'),
         ('water_level', 'Water Level (m)'),
+        ('light', 'Ambient Light (Lux)'),
+        ('rain', 'Rain Level (mm)'),
     ]
     
     SENSOR_STATUS = [

@@ -44,8 +44,9 @@ document.addEventListener('DOMContentLoaded', () => {
         const autoInput = document.getElementById('auto-aeration-threshold-input');
         if (autoInput) autoInput.value = autoThreshold;
         
-        // Load initial Water Wheels list
+        // Load initial Water Wheels and Sensors list
         loadWaterWheels(activePondId);
+        loadPondSensors(activePondId);
     }
 
     // Initialize 3D Visualizer
@@ -81,8 +82,9 @@ function setupEventListeners() {
             const autoInput = document.getElementById('auto-aeration-threshold-input');
             if (autoInput) autoInput.value = autoThreshold;
             
-            // Load Multiple Water Wheels
+            // Load Multiple Water Wheels and Sensors list
             loadWaterWheels(activePondId);
+            loadPondSensors(activePondId);
             
             // Refresh Dashboard Content
             refreshTelemetryData();
@@ -116,14 +118,7 @@ function setupEventListeners() {
     if (shrimpCb) shrimpCb.addEventListener('change', onCbChange);
     if (crabCb) crabCb.addEventListener('change', onCbChange);
 
-    // Weather button listeners
-    const dayBtn = document.getElementById('weather-day-btn');
-    const nightBtn = document.getElementById('weather-night-btn');
-    const rainBtn = document.getElementById('weather-rain-btn');
-    
-    if (dayBtn) dayBtn.addEventListener('click', () => setWeatherMode('day'));
-    if (nightBtn) nightBtn.addEventListener('click', () => setWeatherMode('night'));
-    if (rainBtn) rainBtn.addEventListener('click', () => setWeatherMode('rain'));
+
     
     // Feed button listener
     const feedBtn = document.getElementById('feed-fish-btn');
@@ -319,21 +314,46 @@ function refreshTelemetryData() {
     .then(res => res.json())
     .then(data => {
         if (data.status === 'success') {
-            // Setup sensor readings fetches
-            // In views, sensor_list_api returns: [{id, name, sensor_type, status}]
-            // Let's retrieve readings for each sensor
-            data.sensors.forEach(sensor => {
-                // Fetch historical or current value to update dashboard cards
-                fetch(`/api/historical/?pond_id=${activePondId}&sensor_type=${sensor.sensor_type}&days=1`)
+            let lightValue = null;
+            let rainValue = null;
+            
+            const promises = data.sensors.map(sensor => {
+                return fetch(`/api/historical/?pond_id=${activePondId}&sensor_type=${sensor.sensor_type}&days=1`)
                 .then(r => r.json())
                 .then(history => {
                     if (history.status === 'success' && history.data.length > 0) {
                         const val = history.data[history.data.length - 1];
                         updateCardValue(sensor.sensor_type, val);
+                        if (sensor.sensor_type === 'light') lightValue = val;
+                        if (sensor.sensor_type === 'rain') rainValue = val;
                     } else {
                         updateCardValue(sensor.sensor_type, 'N/A');
                     }
                 });
+            });
+            
+            Promise.all(promises).then(() => {
+                let computedMode = 'day';
+                let displayHtml = '';
+                
+                if (rainValue !== null && typeof rainValue === 'number' && rainValue > 5.0) {
+                    computedMode = 'rain';
+                    displayHtml = `<i class="fas fa-cloud-showers-heavy" style="color: #a18cd1;"></i> 雨天 (感測器: ${rainValue.toFixed(1)} mm)`;
+                } else if (lightValue !== null && typeof lightValue === 'number' && lightValue < 150.0) {
+                    computedMode = 'night';
+                    displayHtml = `<i class="fas fa-moon" style="color: #4facfe;"></i> 黑夜 (感測器: ${lightValue.toFixed(0)} Lux)`;
+                } else {
+                    computedMode = 'day';
+                    const luxStr = (lightValue !== null && typeof lightValue === 'number') ? `${lightValue.toFixed(0)} Lux` : '--';
+                    displayHtml = `<i class="fas fa-sun" style="color: #ffaa00;"></i> 白天 (感測器: ${luxStr})`;
+                }
+                
+                setWeatherMode(computedMode);
+                
+                const weatherStatusText = document.getElementById('weather-status-text');
+                if (weatherStatusText) {
+                    weatherStatusText.innerHTML = displayHtml;
+                }
             });
         }
     });
@@ -368,6 +388,8 @@ function updateCardValue(type, value) {
     else if (type === 'ph') selector = '#val-ph';
     else if (type === 'dissolved_oxygen') selector = '#val-do';
     else if (type === 'water_level') selector = '#val-wl';
+    else if (type === 'light') selector = '#val-light';
+    else if (type === 'rain') selector = '#val-rain';
     
     const el = document.querySelector(selector);
     if (el) {
@@ -457,6 +479,12 @@ function updateChartData(labels, data, type) {
     } else if (type === 'water_level') {
         label = '水位 (m)';
         color = '#ff9f43';
+    } else if (type === 'light') {
+        label = '環境光照 (Lux)';
+        color = '#ffca28';
+    } else if (type === 'rain') {
+        label = '即時降雨量 (mm)';
+        color = '#a18cd1';
     }
     
     const ctx = document.getElementById('historical-chart').getContext('2d');
@@ -524,16 +552,16 @@ function initThreeJS() {
     pointLight.position.set(-4, 0.5, -4);
     scene.add(pointLight);
 
-    // Build Pond Basin
-    const pondGeo = new THREE.CylinderGeometry(5.2, 4.8, 1.5, 32);
+    // Build Pond Basin Rim (only a thin ring/border at the top water surface, removing the deep grey bucket underneath)
+    const pondGeo = new THREE.CylinderGeometry(5.1, 5.1, 0.15, 32, 1, true);
     const pondMat = new THREE.MeshStandardMaterial({
-        color: 0x1a2639,
-        roughness: 0.6,
-        metalness: 0.1,
-        side: THREE.BackSide
+        color: 0x223047,
+        roughness: 0.5,
+        metalness: 0.2,
+        side: THREE.DoubleSide
     });
     const pond = new THREE.Mesh(pondGeo, pondMat);
-    pond.position.y = -0.55;
+    pond.position.y = 0.05;
     scene.add(pond);
 
     // Pond Water Plane
@@ -2334,5 +2362,122 @@ function feedFromMachine(count = 4) {
             fromFeeder: true
         });
     }
+}
+
+// --- Active Sensor CRUD & List Management Functions ---
+function loadPondSensors(pondId) {
+    if (!pondId) return;
+    
+    fetch(`/api/ponds/${pondId}/sensors/`)
+    .then(res => res.json())
+    .then(data => {
+        if (data.status === 'success') {
+            const container = document.getElementById('sensor-list-container');
+            if (!container) return;
+            
+            container.innerHTML = '';
+            
+            if (data.sensors.length === 0) {
+                container.innerHTML = `<span style="font-size:12px; color:var(--text-muted);">本池目前無感測器。</span>`;
+                return;
+            }
+            
+            data.sensors.forEach(s => {
+                let iconClass = 'fa-microchip';
+                let iconColor = 'var(--color-primary)';
+                let typeText = s.sensor_type;
+                
+                if (s.sensor_type === 'temperature') {
+                    iconClass = 'fa-temperature-high';
+                    iconColor = 'var(--color-danger)';
+                    typeText = '水溫';
+                } else if (s.sensor_type === 'ph') {
+                    iconClass = 'fa-droplet';
+                    iconColor = 'var(--color-success)';
+                    typeText = 'pH 值';
+                } else if (s.sensor_type === 'dissolved_oxygen') {
+                    iconClass = 'fa-wind';
+                    iconColor = 'var(--color-secondary)';
+                    typeText = '溶氧';
+                } else if (s.sensor_type === 'water_level') {
+                    iconClass = 'fa-water';
+                    iconColor = 'var(--color-warning)';
+                    typeText = '水位';
+                } else if (s.sensor_type === 'light') {
+                    iconClass = 'fa-sun';
+                    iconColor = '#ffca28';
+                    typeText = '光照';
+                } else if (s.sensor_type === 'rain') {
+                    iconClass = 'fa-cloud-showers-heavy';
+                    iconColor = 'var(--color-accent)';
+                    typeText = '雨量';
+                }
+                
+                const randomSignal = 3 + Math.floor(Math.random() * 2);
+                const signalClass = randomSignal === 4 ? 'fa-signal' : 'fa-signal';
+                const batPct = 60 + Math.floor(Math.random() * 40);
+                
+                const div = document.createElement('div');
+                div.style.display = 'flex';
+                div.style.justify = 'space-between';
+                div.style.alignItems = 'center';
+                div.style.background = 'rgba(255,255,255,0.02)';
+                div.style.padding = '8px 12px';
+                div.style.borderRadius = '8px';
+                div.style.border = '1px solid var(--border-color)';
+                div.style.fontSize = '12px';
+                
+                div.innerHTML = `
+                    <div style="display:flex; align-items:center; gap:8px;">
+                        <div style="width: 26px; height: 26px; border-radius: 6px; background: rgba(255,255,255,0.03); display:flex; align-items:center; justify-content:center;">
+                            <i class="fas ${iconClass}" style="color:${iconColor}; font-size:12px;"></i>
+                        </div>
+                        <div>
+                            <span style="font-weight:600; color:#fff; display:block;">${s.name}</span>
+                            <span style="font-size:10px; color:var(--text-secondary);">${typeText}・🟢 運作中</span>
+                        </div>
+                    </div>
+                    <div style="display:flex; align-items:center; gap:8px;">
+                        <span style="color:var(--text-muted); font-size:10px;" title="電池與訊號強度">
+                            <i class="fas fa-battery-three-quarters" style="margin-right:2px;"></i> ${batPct}%
+                        </span>
+                        <button class="btn-danger delete-sensor-btn" data-id="${s.id}" style="padding: 4px 6px; font-size: 10px; border-radius: 4px; border:none; line-height:1; height:22px; cursor:pointer;" title="刪除感測器">
+                            <i class="fas fa-trash-can"></i>
+                        </button>
+                    </div>
+                `;
+                container.appendChild(div);
+            });
+            
+            // Bind delete click handlers
+            container.querySelectorAll('.delete-sensor-btn').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    const sensorId = btn.dataset.id;
+                    if (confirm('確定要刪除此感測器嗎？這將會同步清除該感測器的所有歷史數據。')) {
+                        deleteSensor(sensorId);
+                    }
+                });
+            });
+        }
+    })
+    .catch(err => console.error(err));
+}
+
+function deleteSensor(sensorId) {
+    fetch(`/api/sensors/${sensorId}/`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' }
+    })
+    .then(res => res.json())
+    .then(data => {
+        if (data.status === 'success') {
+            loadPondSensors(activePondId);
+            refreshTelemetryData();
+        } else {
+            alert('刪除感測器失敗：' + data.message);
+        }
+    })
+    .catch(err => console.error(err));
 }
 

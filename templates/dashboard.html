@@ -67,6 +67,16 @@
                 <div class="action-icon"><i class="fas fa-plus-circle"></i></div>
                 <span>新增魚池</span>
             </div>
+
+            <!-- Sensor Management Panel -->
+            <div class="glass-panel" style="padding: 20px; display: flex; flex-direction: column; gap: 14px; margin-top: 14px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border-color); padding-bottom: 8px;">
+                    <h3 style="font-size: 15px; display: flex; align-items: center; gap: 6px;"><i class="fas fa-sliders" style="color:var(--color-primary)"></i> 感測器運作管理</h3>
+                </div>
+                <div id="sensor-list-container" style="display: flex; flex-direction: column; gap: 10px; max-height: 250px; overflow-y: auto; padding-right: 4px;">
+                    <!-- Filled dynamically by JS -->
+                </div>
+            </div>
         </div>
 
         <!-- Main Dashboard Views -->
@@ -113,15 +123,9 @@
                         
                         <!-- Dynamic Weather and Feed controls -->
                         <div class="weather-feed-overlay">
-                            <button class="ar-btn" id="weather-day-btn" style="background: rgba(0, 242, 254, 0.15); border-color: rgba(0, 242, 254, 0.3); color: #fff; padding: 6px 12px; font-size: 12.5px; border-radius: 20px;">
-                                <i class="fas fa-sun" style="color: #ffaa00;"></i> 白天
-                            </button>
-                            <button class="ar-btn" id="weather-night-btn" style="background: rgba(255, 255, 255, 0.05); border-color: rgba(255, 255, 255, 0.1); color: var(--text-secondary); padding: 6px 12px; font-size: 12.5px; border-radius: 20px;">
-                                <i class="fas fa-moon" style="color: #4facfe;"></i> 黑夜
-                            </button>
-                            <button class="ar-btn" id="weather-rain-btn" style="background: rgba(255, 255, 255, 0.05); border-color: rgba(255, 255, 255, 0.1); color: var(--text-secondary); padding: 6px 12px; font-size: 12.5px; border-radius: 20px;">
-                                <i class="fas fa-cloud-showers-heavy" style="color: #a18cd1;"></i> 雨天
-                            </button>
+                            <div class="ar-btn" id="weather-sensor-status" style="background: rgba(18, 24, 35, 0.85); border-color: rgba(255,255,255,0.1); color: #fff; padding: 6px 14px; font-size: 12.5px; border-radius: 20px; display: flex; align-items: center; gap: 6px; cursor: default; box-shadow: var(--shadow-main);">
+                                <i class="fas fa-microchip" style="color: var(--color-primary);"></i> <span id="weather-status-text">環境監測中...</span>
+                            </div>
                             <button class="ar-btn" id="feed-fish-btn" style="background: rgba(255, 159, 67, 0.15); border-color: rgba(255, 159, 67, 0.3); color: var(--color-warning); padding: 6px 12px; font-size: 12.5px; border-radius: 20px;">
                                 <i class="fas fa-cookie"></i> 投餵飼料
                             </button>
@@ -175,6 +179,22 @@
                             <div class="telemetry-info">
                                 <span class="telemetry-label">目前水位</span>
                                 <span class="telemetry-value"><span id="val-wl">--</span><span class="telemetry-unit"> m</span></span>
+                            </div>
+                        </div>
+
+                        <div class="glass-panel telemetry-card light-card">
+                            <div class="telemetry-icon-box"><i class="fas fa-sun"></i></div>
+                            <div class="telemetry-info">
+                                <span class="telemetry-label">環境光照</span>
+                                <span class="telemetry-value"><span id="val-light">--</span><span class="telemetry-unit"> Lux</span></span>
+                            </div>
+                        </div>
+
+                        <div class="glass-panel telemetry-card rain-card">
+                            <div class="telemetry-icon-box"><i class="fas fa-cloud-showers-heavy"></i></div>
+                            <div class="telemetry-info">
+                                <span class="telemetry-label">即時降雨量</span>
+                                <span class="telemetry-value"><span id="val-rain">--</span><span class="telemetry-unit"> mm</span></span>
                             </div>
                         </div>
 
@@ -297,6 +317,8 @@
                             <option value="ph">酸鹼 pH 值</option>
                             <option value="dissolved_oxygen">水中溶氧量 (mg/L)</option>
                             <option value="water_level">目前水位 (m)</option>
+                            <option value="light">環境光照 (Lux)</option>
+                            <option value="rain">即時降雨量 (mm)</option>
                         </select>
                     </div>
 

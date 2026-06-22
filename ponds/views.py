@@ -53,6 +53,18 @@ def catch_up_sensor_readings():
     If they are, simulate periodic 2-minute updates up to the current time.
     This simulates an active IoT sensor stream.
     """
+    # Ensure all ponds have light and rain sensors
+    for pond in Pond.objects.all():
+        for stype, sname in [('light', f"{pond.name[:6].upper()}-LIGH"), ('rain', f"{pond.name[:6].upper()}-RAIN")]:
+            sensor, created = Sensor.objects.get_or_create(
+                pond=pond,
+                sensor_type=stype,
+                defaults={'name': sname, 'status': 'active'}
+            )
+            if created:
+                val = 400.0 if stype == 'light' else 0.0
+                SensorReading.objects.create(sensor=sensor, value=val, timestamp=timezone.now() - timedelta(hours=24))
+
     now = timezone.now()
     last_reading = SensorReading.objects.order_by('-timestamp').first()
     if not last_reading:
@@ -95,6 +107,20 @@ def catch_up_sensor_readings():
             wl_variation = 0.05 * math.sin(hour * math.pi / 12)
             noise = random.uniform(-0.02, 0.02)
             return round(base_wl + wl_variation + noise, 2)
+        elif sensor_type == 'light':
+            base_light = 500.0
+            angle = (hour - 6) * math.pi / 12
+            light_variation = 480.0 * math.sin(angle)
+            noise = random.uniform(-15.0, 15.0)
+            return max(0.0, round(base_light + light_variation + noise, 1))
+        elif sensor_type == 'rain':
+            if 14 <= hour <= 17:
+                if random.random() < 0.4:
+                    return round(random.uniform(6.0, 25.0), 1)
+            else:
+                if random.random() < 0.05:
+                    return round(random.uniform(1.0, 8.0), 1)
+            return 0.0
         return 0.0
 
     while current_time <= now:
@@ -135,7 +161,7 @@ def dashboard_view(request):
                 'type': s.sensor_type,
                 'status': s.status,
                 'latest_value': latest.value if latest else 'N/A',
-                'unit': '°C' if s.sensor_type == 'temperature' else ('mg/L' if s.sensor_type == 'dissolved_oxygen' else ('m' if s.sensor_type == 'water_level' else ''))
+                'unit': '°C' if s.sensor_type == 'temperature' else ('mg/L' if s.sensor_type == 'dissolved_oxygen' else ('m' if s.sensor_type == 'water_level' else ('Lux' if s.sensor_type == 'light' else ('mm' if s.sensor_type == 'rain' else ''))))
             })
             
         wheels = WaterWheel.objects.filter(pond=pond)
@@ -192,6 +218,8 @@ def pond_list_api(request):
                 ('ph', f"{pond.name[:6].upper()}-PH"),
                 ('dissolved_oxygen', f"{pond.name[:6].upper()}-DISS"),
                 ('water_level', f"{pond.name[:6].upper()}-WATE"),
+                ('light', f"{pond.name[:6].upper()}-LIGH"),
+                ('rain', f"{pond.name[:6].upper()}-RAIN"),
             ]
             for stype, sname in sensor_types:
                 Sensor.objects.create(pond=pond, name=sname, sensor_type=stype, status='active')
@@ -199,12 +227,23 @@ def pond_list_api(request):
             # Create a first reading so it is initialized
             now = timezone.now()
             for s in Sensor.objects.filter(pond=pond):
-                val = 25.0 if s.sensor_type == 'temperature' else (7.5 if s.sensor_type == 'ph' else (6.0 if s.sensor_type == 'dissolved_oxygen' else 2.0))
+                if s.sensor_type == 'temperature':
+                    val = 25.0
+                elif s.sensor_type == 'ph':
+                    val = 7.5
+                elif s.sensor_type == 'dissolved_oxygen':
+                    val = 6.0
+                elif s.sensor_type == 'water_level':
+                    val = 2.0
+                elif s.sensor_type == 'light':
+                    val = 400.0
+                else:
+                    val = 0.0
                 SensorReading.objects.create(sensor=s, value=val, timestamp=now)
 
             return JsonResponse({
                 'status': 'success', 
-                'message': 'Pond created successfully with 4 default active sensors.',
+                'message': 'Pond created successfully with 6 default active sensors.',
                 'pond': {'id': pond.id, 'name': pond.name, 'location': pond.location, 'water_wheel_status': pond.water_wheel_status}
             })
         except Exception as e:
@@ -393,6 +432,24 @@ def historical_data_api(request):
         if low_wl > 0:
             health_status = "警告：水位偏低 (Low Water)"
             health_advice = "水位低於安全底線 1.6m。請檢查是否存在滲漏，並適度補充乾淨水源。"
+            
+    elif sensor_type == 'light' and values:
+        low_light = sum(1 for v in values if v < 150)
+        if low_light > 10:
+            health_status = "環境狀態：夜間監測 (Night Monitoring)"
+            health_advice = "夜間照度偏低。請注意夜間水中溶氧消耗速度較快，智慧溶氧自動增氧控制已加強待命。"
+        else:
+            health_status = "環境狀態：日間光照 (Daylight Active)"
+            health_advice = "日間光強良好，浮游植物正常行光合作用產生溶氧。建議在光照充足時適度減少水車運轉以節省電力。"
+            
+    elif sensor_type == 'rain' and values:
+        high_rain = sum(1 for v in values if v > 5.0)
+        if high_rain > 0:
+            health_status = "環境狀態：即時降雨 (Rainy Condition)"
+            health_advice = "偵測到即時降雨。降雨會降低氣壓，並大幅降低水池表層水溫，易引發對流缺氧。建議加強增氧水車運轉。"
+        else:
+            health_status = "環境狀態：無雨晴朗 (Clear Sky)"
+            health_advice = "目前天氣狀況晴朗無降雨，水體表面無雨水沖刷，各項指標穩定。"
 
     return JsonResponse({
         'status': 'success',

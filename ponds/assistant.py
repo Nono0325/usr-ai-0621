@@ -59,7 +59,7 @@ TOOLS = [
                     "name": {"type": "string", "description": "感測器代碼/名稱，例如 'PH-04'"},
                     "sensor_type": {
                         "type": "string", 
-                        "enum": ["temperature", "ph", "dissolved_oxygen", "water_level"],
+                        "enum": ["temperature", "ph", "dissolved_oxygen", "water_level", "light", "rain"],
                         "description": "感測器類型"
                     }
                 },
