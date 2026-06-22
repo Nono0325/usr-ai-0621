@@ -64,43 +64,53 @@ document.addEventListener('DOMContentLoaded', () => {
 
 // Setup All Interactive Event Listeners
 function setupEventListeners() {
-    // 1. Pond Card Click Selector
-    document.querySelectorAll('.pond-card').forEach(card => {
-        card.addEventListener('click', () => {
-            document.querySelectorAll('.pond-card').forEach(c => c.classList.remove('active'));
-            card.classList.add('active');
-            activePondId = parseInt(card.dataset.id);
-            isWheelSpinning = card.dataset.wheel === 'true';
+    // 1. Delegated Pond List Handler (handles card selection and deletion)
+    const pondList = document.querySelector('.pond-list');
+    if (pondList) {
+        pondList.addEventListener('click', (e) => {
+            const deleteBtn = e.target.closest('.delete-pond-btn');
+            if (deleteBtn) {
+                e.stopPropagation();
+                const pondId = deleteBtn.dataset.id;
+                const pondCard = deleteBtn.closest('.pond-card');
+                const pondName = pondCard.querySelector('.pond-title').textContent;
+                if (confirm(`確定要刪除魚池 '${pondName}' 嗎？這將會同步清除該魚池的所有感測器與監測歷史數據。`)) {
+                    deletePond(pondId);
+                }
+                return;
+            }
             
-            // Sync Auto Aeration UI State from Card Dataset
-            const autoEnabled = card.dataset.autoEnabled === 'true';
-            const autoThreshold = parseFloat(card.dataset.autoThreshold || '4.0');
-            
-            const autoSwitch = document.getElementById('auto-aeration-switch');
-            if (autoSwitch) autoSwitch.checked = autoEnabled;
-            
-            const autoInput = document.getElementById('auto-aeration-threshold-input');
-            if (autoInput) autoInput.value = autoThreshold;
-            
-            // Load Multiple Water Wheels and Sensors list
-            loadWaterWheels(activePondId);
-            loadPondSensors(activePondId);
-            
-            // Refresh Dashboard Content
-            refreshTelemetryData();
-            
-            // Update 3D Title
-            document.getElementById('pond-title-3d').textContent = card.querySelector('.pond-title').textContent;
+            const card = e.target.closest('.pond-card');
+            if (card) {
+                document.querySelectorAll('.pond-card').forEach(c => c.classList.remove('active'));
+                card.classList.add('active');
+                activePondId = parseInt(card.dataset.id);
+                isWheelSpinning = card.dataset.wheel === 'true';
+                
+                const autoEnabled = card.dataset.autoEnabled === 'true';
+                const autoThreshold = parseFloat(card.dataset.autoThreshold || '4.0');
+                
+                const autoSwitch = document.getElementById('auto-aeration-switch');
+                if (autoSwitch) autoSwitch.checked = autoEnabled;
+                
+                const autoInput = document.getElementById('auto-aeration-threshold-input');
+                if (autoInput) autoInput.value = autoThreshold;
+                
+                loadWaterWheels(activePondId);
+                loadPondSensors(activePondId);
+                refreshTelemetryData();
+                
+                document.getElementById('pond-title-3d').textContent = card.querySelector('.pond-title').textContent;
 
-            // Clear any active feed pellets
-            if (feedParticles.length > 0) {
-                feedParticles.forEach(p => {
-                    if (scene) scene.remove(p.mesh);
-                });
-                feedParticles = [];
+                if (feedParticles.length > 0) {
+                    feedParticles.forEach(p => {
+                        if (scene) scene.remove(p.mesh);
+                    });
+                    feedParticles = [];
+                }
             }
         });
-    });
+    }
 
     // Creature Selector checkbox handlers
     const fishCb = document.getElementById('creature-fish-cb');
@@ -1409,8 +1419,9 @@ function handleAIAction(action) {
                     const wheelSpinningClass = p.water_wheel_status ? 'spinning' : '';
                     
                     card.innerHTML = `
-                        <div class="pond-card-header">
+                        <div class="pond-card-header" style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
                             <div class="pond-title">${p.name}</div>
+                            <button class="btn-danger delete-pond-btn" data-id="${p.id}" style="padding: 2px 6px; font-size: 11px; border-radius: 4px; border:none; line-height:1; height:20px; cursor:pointer; z-index:100;" title="刪除魚池"><i class="fas fa-trash-can"></i></button>
                         </div>
                         <div class="pond-meta"><i class="fas fa-map-marker-alt"></i> ${p.location}</div>
                         <div class="pond-status-indicators">
@@ -1425,8 +1436,6 @@ function handleAIAction(action) {
                     listContainer.appendChild(card);
                 });
                 
-                // Re-bind click event triggers to new cards
-                setupEventListeners();
                 refreshTelemetryData();
             }
         });
@@ -2476,6 +2485,36 @@ function deleteSensor(sensorId) {
             refreshTelemetryData();
         } else {
             alert('刪除感測器失敗：' + data.message);
+        }
+    })
+    .catch(err => console.error(err));
+}
+
+function deletePond(pondId) {
+    fetch(`/api/ponds/${pondId}/`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' }
+    })
+    .then(res => res.json())
+    .then(data => {
+        if (data.status === 'success') {
+            handleAIAction({ action_type: 'ui_refresh' });
+            
+            setTimeout(() => {
+                const firstCard = document.querySelector('.pond-card');
+                if (firstCard) {
+                    firstCard.click();
+                } else {
+                    activePondId = null;
+                    ['temperature', 'ph', 'dissolved_oxygen', 'water_level', 'light', 'rain'].forEach(type => updateCardValue(type, '--'));
+                    document.getElementById('pond-title-3d').textContent = '無選取魚池';
+                    // Clear sensor list
+                    const container = document.getElementById('sensor-list-container');
+                    if (container) container.innerHTML = `<span style="font-size:12px; color:var(--text-muted);">無選取魚池。</span>`;
+                }
+            }, 500);
+        } else {
+            alert('刪除魚池失敗：' + data.message);
         }
     })
     .catch(err => console.error(err));

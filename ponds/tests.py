@@ -90,3 +90,20 @@ class AquacultureTestCase(TestCase):
         
         # Verify it is deleted from database
         self.assertFalse(Sensor.objects.filter(id=sensor_id).exists())
+
+    def test_pond_deletion_api(self):
+        # Create an extra pond to delete
+        extra_pond = Pond.objects.create(name="EXTRA POND", location="East Side", water_wheel_status=False)
+        pond_id = extra_pond.id
+        
+        # Verify it exists
+        self.assertTrue(Pond.objects.filter(id=pond_id).exists())
+        
+        # Delete via API
+        response = self.client.delete(reverse('pond_detail_api', kwargs={'pond_id': pond_id}))
+        self.assertEqual(response.status_code, 200)
+        data = json.loads(response.content)
+        self.assertEqual(data['status'], 'success')
+        
+        # Verify it is deleted from database
+        self.assertFalse(Pond.objects.filter(id=pond_id).exists())

@@ -38,8 +38,9 @@
                      data-wheel="{% if item.pond.water_wheel_status %}true{% else %}false{% endif %}"
                      data-auto-enabled="{% if item.pond.auto_aeration_enabled %}true{% else %}false{% endif %}"
                      data-auto-threshold="{{ item.pond.auto_aeration_threshold }}">
-                    <div class="pond-card-header">
+                    <div class="pond-card-header" style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
                         <div class="pond-title">{{ item.pond.name }}</div>
+                        <button class="btn-danger delete-pond-btn" data-id="{{ item.pond.id }}" style="padding: 2px 6px; font-size: 11px; border-radius: 4px; border:none; line-height:1; height:20px; cursor:pointer; z-index:100;" title="刪除魚池"><i class="fas fa-trash-can"></i></button>
                     </div>
                     <div class="pond-meta"><i class="fas fa-map-marker-alt"></i> {{ item.pond.location }}</div>
                     <div class="pond-status-indicators">
